@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" height="100%">
+  <!-- Background: Official Academia Valencia Vibrant Orange -->
+  <rect width="500" height="500" rx="32" fill="#FF6600"/>
+
+  <g transform="translate(10, 0)">
+    <!-- Owl Mascot with Graduation Cap (White Vector Outline) -->
+    <g fill="none" stroke="#FFFFFF" stroke-width="13" stroke-linecap="round" stroke-linejoin="round">
+      <!-- Graduation Cap Mortarboard (Diamond Top) -->
+      <polygon points="120,185 180,158 240,185 180,212" fill="#FF6600" />
+      
+      <!-- Graduation Cap Skullcap Band -->
+      <path d="M 140 196 L 140 215 C 140 226, 220 226, 220 215 L 220 196" fill="#FF6600" />
+      
+      <!-- Tassel on the right side of the cap -->
+      <path d="M 230 192 L 230 240" />
+      <circle cx="230" cy="245" r="4" fill="#FFFFFF" />
+
+      <!-- Owl Face / Body Outer Contour (Shield shape tapering to a bottom V point) -->
+      <path d="M 132 225 L 126 255 C 124 270, 128 285, 138 296 L 180 342 L 222 296 C 232 285, 236 270, 234 255 L 228 225" />
+
+      <!-- Owl Eyes (Large dual circles) -->
+      <circle cx="156" cy="254" r="17" />
+      <circle cx="204" cy="254" r="17" />
+
+      <!-- Small Triangle Beak -->
+      <polygon points="175,263 185,263 180,272" fill="#FFFFFF" stroke="none" />
+    </g>
+
+    <!-- Owl Pupils (Solid White dots) -->
+    <circle cx="156" cy="254" r="6.5" fill="#FFFFFF" />
+    <circle cx="204" cy="254" r="6.5" fill="#FFFFFF" />
+
+    <!-- Academia Valencia Typography -->
+    <!-- Line 1: Academia -->
+    <text x="260" y="248" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="44" font-weight="900" letter-spacing="-0.5">
+      Academia
+    </text>
+    <!-- Line 2: Valencia -->
+    <text x="260" y="302" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="44" font-weight="700" letter-spacing="-0.5">
+      Valencia
+    </text>
+  </g>
+</svg>

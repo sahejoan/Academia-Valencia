@@ -1,0 +1,6 @@
+{
+  "name": "Academia Valencia",
+  "description": "Portal oficial y sistema de gestión académica integral de Academia Valencia: Excelencia Educativa y Conocimiento que Transforma.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
