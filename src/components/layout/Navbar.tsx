@@ -10,7 +10,9 @@ import {
   LogOut,
   FileSpreadsheet,
   Clock,
-  Activity
+  Activity,
+  Cloud,
+  CloudCheck
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { UserRole } from '../../types';
@@ -124,7 +126,8 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, onGoToPublicSit
     setActiveTerm,
     getUnreadNotificationsCount,
     triggerSimulatedRealTimeEvent,
-    logout
+    logout,
+    isCloudSynced
   } = useApp();
 
   const [isNotifDrawerOpen, setIsNotifDrawerOpen] = useState(false);
@@ -160,6 +163,15 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, onGoToPublicSit
             >
               <Globe className="w-3.5 h-3.5 text-indigo-500" /> Sitio Público / Oferta
             </button>
+
+            {/* Cloud Firestore Status Badge */}
+            <div
+              title="Base de datos en la nube Firebase Firestore conectada y sincronizada en tiempo real"
+              className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-[11px] font-bold text-emerald-700 dark:text-emerald-300"
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>Nube Sincronizada</span>
+            </div>
           </div>
 
           {/* Center: Active Session Indicator & Academic Term */}
@@ -244,4 +256,3 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, onGoToPublicSit
     </>
   );
 };
-

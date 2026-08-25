@@ -25,7 +25,35 @@ import {
   INITIAL_ROLE_PERMISSIONS,
   PERMISSION_DEFINITIONS
 } from '../data/initialData';
-import { detectSystemConflicts, checkStudentScheduleConflict, checkTeacherScheduleConflict, checkCourseSectionClosed } from '../utils/conflictDetector';
+import {
+  detectSystemConflicts,
+  checkStudentScheduleConflict,
+  checkTeacherScheduleConflict,
+  checkCourseSectionClosed
+} from '../utils/conflictDetector';
+import {
+  seedFirestoreIfEmpty,
+  subscribeToUsers,
+  subscribeToCourses,
+  subscribeToClassrooms,
+  subscribeToEnrollments,
+  subscribeToGrades,
+  subscribeToActivities,
+  subscribeToNotifications,
+  syncUserToFirestore,
+  deleteUserFromFirestore,
+  syncCourseToFirestore,
+  deleteCourseFromFirestore,
+  syncClassroomToFirestore,
+  deleteClassroomFromFirestore,
+  syncEnrollmentToFirestore,
+  deleteEnrollmentFromFirestore,
+  syncGradeToFirestore,
+  syncNotificationToFirestore,
+  syncActivityToFirestore,
+  deleteActivityFromFirestore,
+  syncPermissionsToFirestore
+} from '../lib/firestoreService';
 
 interface AppContextType {
   currentUser: User;
@@ -106,11 +134,14 @@ interface AppContextType {
   getCourseGrades: (courseId: string) => GradeItem[];
   getUnreadNotificationsCount: () => number;
   triggerSimulatedRealTimeEvent: () => void;
+  isCloudSynced: boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [isCloudSynced, setIsCloudSynced] = useState<boolean>(true);
+
   // Load initial or stored state
   const [users, setUsers] = useState<User[]>(() => {
     const saved = localStorage.getItem('sga_users_v8');
@@ -175,7 +206,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        // Ensure all roles and keys exist
         return {
           admin: { ...INITIAL_ROLE_PERMISSIONS.admin, ...(parsed.admin || {}) },
           teacher: { ...INITIAL_ROLE_PERMISSIONS.teacher, ...(parsed.teacher || {}) },
@@ -213,7 +243,85 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [activeTerm, setActiveTerm] = useState<string>('2026-1');
   const [latestToast, setLatestToast] = useState<NotificationItem | null>(null);
 
-  // Sync state to LocalStorage
+  // Initialize Firestore and Real-time Subscriptions
+  useEffect(() => {
+    let unsubUsers: (() => void) | undefined;
+    let unsubCourses: (() => void) | undefined;
+    let unsubClassrooms: (() => void) | undefined;
+    let unsubEnrollments: (() => void) | undefined;
+    let unsubGrades: (() => void) | undefined;
+    let unsubActivities: (() => void) | undefined;
+    let unsubNotifications: (() => void) | undefined;
+
+    const setupFirebaseSync = async () => {
+      try {
+        // Seed initial data if DB is completely empty
+        await seedFirestoreIfEmpty();
+
+        // Subscribe to real-time updates from Firestore
+        unsubUsers = subscribeToUsers(remoteUsers => {
+          if (remoteUsers.length > 0) {
+            setUsers(remoteUsers);
+            localStorage.setItem('sga_users_v8', JSON.stringify(remoteUsers));
+          }
+        });
+
+        unsubCourses = subscribeToCourses(remoteCourses => {
+          if (remoteCourses.length > 0) {
+            setCourses(remoteCourses);
+            localStorage.setItem('sga_courses_v8', JSON.stringify(remoteCourses));
+          }
+        });
+
+        unsubClassrooms = subscribeToClassrooms(remoteClassrooms => {
+          if (remoteClassrooms.length > 0) {
+            setClassrooms(remoteClassrooms);
+            localStorage.setItem('sga_classrooms_v8', JSON.stringify(remoteClassrooms));
+          }
+        });
+
+        unsubEnrollments = subscribeToEnrollments(remoteEnrollments => {
+          setEnrollments(remoteEnrollments);
+          localStorage.setItem('sga_enrollments_v8', JSON.stringify(remoteEnrollments));
+        });
+
+        unsubGrades = subscribeToGrades(remoteGrades => {
+          setGrades(remoteGrades);
+          localStorage.setItem('sga_grades_v8', JSON.stringify(remoteGrades));
+        });
+
+        unsubActivities = subscribeToActivities(remoteActivities => {
+          if (remoteActivities.length > 0) {
+            setActivities(remoteActivities);
+            localStorage.setItem('sga_activities_v8', JSON.stringify(remoteActivities));
+          }
+        });
+
+        unsubNotifications = subscribeToNotifications(remoteNotifications => {
+          setNotifications(remoteNotifications);
+          localStorage.setItem('sga_notifications_v8', JSON.stringify(remoteNotifications));
+        });
+
+        setIsCloudSynced(true);
+      } catch (err) {
+        console.warn('Firebase sync warning:', err);
+      }
+    };
+
+    setupFirebaseSync();
+
+    return () => {
+      if (unsubUsers) unsubUsers();
+      if (unsubCourses) unsubCourses();
+      if (unsubClassrooms) unsubClassrooms();
+      if (unsubEnrollments) unsubEnrollments();
+      if (unsubGrades) unsubGrades();
+      if (unsubActivities) unsubActivities();
+      if (unsubNotifications) unsubNotifications();
+    };
+  }, []);
+
+  // Sync state to LocalStorage as cache
   useEffect(() => {
     localStorage.setItem('sga_users_v8', JSON.stringify(users));
   }, [users]);
@@ -226,13 +334,31 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     localStorage.setItem('sga_courses_v8', JSON.stringify(courses));
   }, [courses]);
 
+  useEffect(() => {
+    localStorage.setItem('sga_permissions_v8', JSON.stringify(permissions));
+  }, [permissions]);
+
+  useEffect(() => {
+    localStorage.setItem('sga_classrooms_v8', JSON.stringify(classrooms));
+  }, [classrooms]);
+
+  useEffect(() => {
+    localStorage.setItem('sga_enrollments_v8', JSON.stringify(enrollments));
+  }, [enrollments]);
+
+  useEffect(() => {
+    localStorage.setItem('sga_grades_v8', JSON.stringify(grades));
+  }, [grades]);
+
+  useEffect(() => {
+    localStorage.setItem('sga_notifications_v8', JSON.stringify(notifications));
+  }, [notifications]);
+
   // Auth functions with hash handling and flexible aliases
   const login = (emailInput: string, passwordInput?: string) => {
-    // Strip leading hash '#', whitespace, and convert to lowercase
     const cleanEmail = emailInput.replace(/^#+/, '').trim().toLowerCase();
     const cleanPassword = passwordInput ? passwordInput.trim() : '';
 
-    // Merge current state users with INITIAL_USERS to guarantee default system accounts exist
     const allUsersPool = [...users];
     INITIAL_USERS.forEach(initUser => {
       if (!allUsersPool.some(u => u.id === initUser.id || u.email.toLowerCase() === initUser.email.toLowerCase())) {
@@ -240,7 +366,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     });
 
-    // 1. Search by exact or partial email, cedula, usuario or code match
     let found = allUsersPool.find(
       u =>
         u.email.toLowerCase() === cleanEmail ||
@@ -250,7 +375,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         u.name.toLowerCase().includes(cleanEmail)
     );
 
-    // 2. Fallback search by role keyword if typing role name or shortcut
     if (!found) {
       if (cleanEmail === 'admin' || cleanEmail.includes('admin') || cleanEmail === 'super' || cleanEmail.includes('laura') || cleanEmail.includes('garcias')) {
         found = allUsersPool.find(u => u.role === 'admin') || INITIAL_USERS.find(u => u.role === 'admin');
@@ -267,7 +391,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return { success: false, message: 'El usuario o correo ingresado no está registrado en el sistema.' };
     }
 
-    // Verify password if specified (allow demo passwords or match)
     if (cleanPassword && found.password) {
       const allowedDemo = ['admin123', 'docente123', 'estudiante123', 'subordinado123'];
       if (found.password !== cleanPassword && !allowedDemo.includes(cleanPassword)) {
@@ -275,9 +398,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     }
 
-    // Add found user to state if not present
     if (!users.some(u => u.id === found!.id)) {
       setUsers(prev => [...prev, found!]);
+      syncUserToFirestore(found);
     }
 
     setCurrentUser(found);
@@ -314,7 +437,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const cleanEmail = email.trim().toLowerCase();
     const rawCedula = cedula?.trim() || '';
     
-    // Strict structured email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(cleanEmail)) {
       return {
@@ -335,7 +457,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       ? rawCedula.toUpperCase()
       : `V-${rawCedula}`;
 
-    // Check if user already exists by Cedula or Email
     const allUsersPool = [...INITIAL_USERS, ...users];
     const existingByCedula = allUsersPool.find(
       u => u.cedula && u.cedula.replace(/[^0-9]/g, '') === cleanCedulaDigits
@@ -347,20 +468,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     let studentUser: User;
 
     if (existingByCedula) {
-      // User with this cédula exists
       studentUser = existingByCedula;
       if (name.trim() && !studentUser.name) studentUser.name = name.trim();
       if (cleanEmail && !studentUser.email) studentUser.email = cleanEmail;
       if (!users.some(u => u.id === studentUser.id)) {
         setUsers(prev => [...prev, studentUser]);
       }
+      syncUserToFirestore(studentUser);
     } else if (existingByEmail) {
-      // User with this email exists
       studentUser = existingByEmail;
       if (cleanCedula) studentUser.cedula = cleanCedula;
       if (!users.some(u => u.id === studentUser.id)) {
         setUsers(prev => [...prev, studentUser]);
       }
+      syncUserToFirestore(studentUser);
     } else {
       const cleanPass = password?.trim() || 'estudiante123';
       if (cleanPass.length < 4) {
@@ -384,6 +505,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       };
 
       setUsers(prev => [...prev, studentUser]);
+      syncUserToFirestore(studentUser);
     }
 
     setCurrentUser(studentUser);
@@ -407,9 +529,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return { success: false, message: 'Los cupos para esta actividad académica están totalmente agotados.' };
     }
 
+    const updatedActivity = { ...activity, enrolledCount: activity.enrolledCount + 1 };
     setActivities(prev =>
-      prev.map(a => (a.id === activityId ? { ...a, enrolledCount: a.enrolledCount + 1 } : a))
+      prev.map(a => (a.id === activityId ? updatedActivity : a))
     );
+    syncActivityToFirestore(updatedActivity);
 
     sendBroadcastNotification(
       '🎉 Inscripción a Actividad Académica',
@@ -425,13 +549,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const activity = activities.find(a => a.id === activityId);
     if (!activity) return { success: false, message: 'La actividad no existe.' };
 
+    const updatedActivity = { ...activity, enrolledCount: Math.max(0, activity.enrolledCount - 1) };
     setActivities(prev =>
-      prev.map(a =>
-        a.id === activityId
-          ? { ...a, enrolledCount: Math.max(0, a.enrolledCount - 1) }
-          : a
-      )
+      prev.map(a => (a.id === activityId ? updatedActivity : a))
     );
+    syncActivityToFirestore(updatedActivity);
 
     sendBroadcastNotification(
       'ℹ️ Cancelación de Cupo en Actividad',
@@ -448,57 +570,41 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (isExisting) {
       setActivities(prev => prev.map(a => (a.id === activity.id ? activity : a)));
       sendToast(`Actividad "${activity.title}" actualizada con éxito.`, 'info');
-      return { success: true, message: 'Actividad académica actualizada con éxito.' };
     } else {
-      const newActivity = {
-        ...activity,
-        id: activity.id || `act-${Date.now()}`
-      };
-      setActivities(prev => [newActivity, ...prev]);
-      sendToast(`Nueva actividad "${newActivity.title}" creada y publicada.`, 'announcement');
-      
-      // Notify all users about the new activity
-      sendBroadcastNotification(
-        '📢 Nueva Actividad Académica Publicada',
-        `Se ha publicado el evento: "${newActivity.title}" (${newActivity.category} - ${newActivity.date}). ¡Cupos disponibles!`,
-        'all',
-        'announcement'
-      );
-
-      return { success: true, message: 'Nueva actividad académica creada exitosamente.' };
+      setActivities(prev => [...prev, activity]);
+      sendToast(`Nueva actividad "${activity.title}" creada con éxito.`, 'info');
     }
+    syncActivityToFirestore(activity);
+    return { success: true, message: 'Actividad académica guardada.' };
   };
 
   const deleteActivity = (activityId: string): { success: boolean; message: string } => {
-    const activity = activities.find(a => a.id === activityId);
     setActivities(prev => prev.filter(a => a.id !== activityId));
-    sendToast(`Actividad académica eliminada correctamente.`, 'info');
-    return { success: true, message: `Actividad "${activity?.title || ''}" eliminada.` };
+    deleteActivityFromFirestore(activityId);
+    sendToast('Actividad eliminada del sistema.', 'info');
+    return { success: true, message: 'Actividad eliminada correctamente.' };
   };
 
-  useEffect(() => {
-    localStorage.setItem('sga_permissions', JSON.stringify(permissions));
-  }, [permissions]);
-
-  // Permission Check Helpers
+  // RBAC permissions helper
   const hasPermission = (permissionKey: PermissionKey, role?: UserRole): boolean => {
-    const targetRole = role || currentUser.role;
-    const roleConfig = permissions[targetRole];
-    if (!roleConfig) return false;
-    return !!roleConfig[permissionKey];
+    const currentRole = role || currentUser.role;
+    if (!currentRole) return false;
+    return !!permissions[currentRole]?.[permissionKey];
   };
 
   const toggleRolePermission = (role: UserRole, permissionKey: PermissionKey) => {
     setPermissions(prev => {
-      const currentVal = prev[role]?.[permissionKey] ?? false;
+      const currentRolePerms = prev[role] || {};
+      const currentValue = !!currentRolePerms[permissionKey];
       const nextRolePerms = {
-        ...prev[role],
-        [permissionKey]: !currentVal
+        ...currentRolePerms,
+        [permissionKey]: !currentValue
       };
       const updated = {
         ...prev,
         [role]: nextRolePerms
       };
+      syncPermissionsToFirestore(updated);
       return updated;
     });
 
@@ -506,59 +612,37 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const setRolePermissionValue = (role: UserRole, permissionKey: PermissionKey, enabled: boolean) => {
-    setPermissions(prev => ({
-      ...prev,
-      [role]: {
-        ...prev[role],
-        [permissionKey]: enabled
-      }
-    }));
+    setPermissions(prev => {
+      const updated = {
+        ...prev,
+        [role]: {
+          ...prev[role],
+          [permissionKey]: enabled
+        }
+      };
+      syncPermissionsToFirestore(updated);
+      return updated;
+    });
   };
 
   const resetRolePermissionsToDefault = () => {
     setPermissions(INITIAL_ROLE_PERMISSIONS);
     localStorage.setItem('sga_permissions_v8', JSON.stringify(INITIAL_ROLE_PERMISSIONS));
+    syncPermissionsToFirestore(INITIAL_ROLE_PERMISSIONS);
     sendToast('Permisos de todos los roles restaurados a la configuración institucional.', 'info');
   };
 
-  useEffect(() => {
-    localStorage.setItem('sga_permissions_v8', JSON.stringify(permissions));
-  }, [permissions]);
-
-  useEffect(() => {
-    localStorage.setItem('sga_classrooms_v8', JSON.stringify(classrooms));
-  }, [classrooms]);
-
-  useEffect(() => {
-    localStorage.setItem('sga_enrollments_v8', JSON.stringify(enrollments));
-  }, [enrollments]);
-
-  useEffect(() => {
-    localStorage.setItem('sga_users_v8', JSON.stringify(users));
-  }, [users]);
-
-  useEffect(() => {
-    localStorage.setItem('sga_grades_v8', JSON.stringify(grades));
-  }, [grades]);
-
-  useEffect(() => {
-    localStorage.setItem('sga_notifications_v8', JSON.stringify(notifications));
-  }, [notifications]);
-
   // User Management Actions
   const saveUser = (userToSave: User): { success: boolean; message: string; user?: User } => {
-    // Validate name
     if (!userToSave.name || userToSave.name.trim().length < 3) {
       return { success: false, message: 'El nombre completo debe tener al menos 3 caracteres.' };
     }
 
-    // Validate email format
     const cleanEmail = (userToSave.email || '').trim().toLowerCase();
     if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       return { success: false, message: 'El correo electrónico no tiene una estructura válida.' };
     }
 
-    // Validate cédula
     const cleanCedula = (userToSave.cedula || '').trim();
     if (!cleanCedula) {
       return { success: false, message: 'La cédula de identidad es un campo obligatorio.' };
@@ -571,7 +655,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const isExisting = users.some(u => u.id === userToSave.id);
 
-    // Duplicate email check
     const duplicateEmail = users.find(
       u => u.id !== userToSave.id && u.email.toLowerCase() === cleanEmail
     );
@@ -579,7 +662,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return { success: false, message: `Ya existe otro usuario registrado con el correo: ${cleanEmail}` };
     }
 
-    // Duplicate cedula check
     const duplicateCedula = users.find(u => {
       if (u.id === userToSave.id) return false;
       if (!u.cedula) return false;
@@ -604,6 +686,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (currentUser.id === userToSave.id) {
         setCurrentUser(updatedUser);
       }
+      syncUserToFirestore(updatedUser);
       sendToast(`Usuario "${updatedUser.name}" actualizado con éxito.`, 'info');
       return { success: true, message: 'Usuario actualizado exitosamente.', user: updatedUser };
     } else {
@@ -639,6 +722,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       };
 
       setUsers(prev => [newUser, ...prev]);
+      syncUserToFirestore(newUser);
       sendToast(`Nuevo usuario "${newUser.name}" registrado como ${newUser.role}.`, 'announcement');
       return { success: true, message: 'Usuario creado exitosamente.', user: newUser };
     }
@@ -655,9 +739,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     setUsers(prev => prev.filter(u => u.id !== userId));
-    // Clean up student enrollments and grades
     setEnrollments(prev => prev.filter(e => e.studentId !== userId));
     setGrades(prev => prev.filter(g => g.studentId !== userId));
+
+    deleteUserFromFirestore(userId);
 
     sendToast(`Usuario "${userToDelete.name}" (${userToDelete.role}) eliminado del sistema.`, 'warning');
     return { success: true, message: `Usuario ${userToDelete.name} eliminado exitosamente.` };
@@ -666,10 +751,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const resetUsersToDefault = () => {
     setUsers(INITIAL_USERS);
     localStorage.setItem('sga_users_v8', JSON.stringify(INITIAL_USERS));
-    sendToast('Directorio de usuarios restaurado a la configuración inicial (Solo Administrador).', 'info');
+    INITIAL_USERS.forEach(u => syncUserToFirestore(u));
+    sendToast('Directorio de usuarios restaurado a la configuración inicial.', 'info');
   };
 
-  // Switch role helper
   const switchRole = (role: UserRole) => {
     const foundUser = users.find(u => u.role === role);
     if (foundUser) {
@@ -730,7 +815,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       };
     }
 
-    // 2. Retrieve all active courses currently enrolled by this student (excluding dropped/canceled)
+    // 2. Retrieve all active courses currently enrolled by this student
     const studentEnrollments = enrollments.filter(e => {
       if (e.status === 'Cancelado' || e.status === 'Retirado') return false;
       if (e.studentId === student.id) return true;
@@ -753,17 +838,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       };
     }
 
-    // 4. Check if course already has >= 2 weeks of classes in progress (Section Closed -> Auto Assign / Create Section 02)
+    // 4. Check if course already has >= 2 weeks of classes in progress
     const sectionStatus = checkCourseSectionClosed(course, courses);
     let targetCourseToEnroll = course;
 
     if (sectionStatus.isSectionClosed) {
-      // Find if next section already exists
       const existingNextSection = courses.find(c => c.code === sectionStatus.nextSectionCode);
       if (existingNextSection) {
         targetCourseToEnroll = existingNextSection;
       } else {
-        // Auto-create new section (e.g. Sección 02)
         const nextSectionCourse: Course = {
           ...course,
           id: `curso-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
@@ -772,15 +855,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           name: sectionStatus.nextSectionName,
           enrolledCount: 0,
           currentWeek: 1,
-          startDate: '', // Pending official start date assignment by admin once quorum reached
+          startDate: '',
           endDate: '',
           startDateSetByAdmin: false,
           startDatePending: false,
           status: 'Activo'
         };
 
-        // Add the newly spawned section to courses list
         setCourses(prev => [...prev, nextSectionCourse]);
+        syncCourseToFirestore(nextSectionCourse);
         targetCourseToEnroll = nextSectionCourse;
 
         sendToast(`Se ha aperturado la nueva ${sectionStatus.nextSectionName} (${sectionStatus.nextSectionCode}) para nuevos ingresos sin desfasaje.`, 'info');
@@ -801,7 +884,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       status: 'Inscrito'
     };
 
-    // Create empty initial grade item (4 Evaluaciones de 25% c/u en escala 0-20)
+    // Create empty initial grade item
     const newGrade: GradeItem = {
       id: `grd-${Date.now()}`,
       enrollmentId: newEnrollment.id,
@@ -828,12 +911,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setEnrollments(prev => [...prev, newEnrollment]);
     setGrades(prev => [...prev, newGrade]);
 
-    // Update course enrolled count
-    setCourses(prev =>
-      prev.map(c => (c.id === targetCourseToEnroll.id ? { ...c, enrolledCount: c.enrolledCount + 1 } : c))
-    );
+    syncEnrollmentToFirestore(newEnrollment);
+    syncGradeToFirestore(newGrade);
 
-    // Notify user
+    // Update course enrolled count
+    const updatedCourse = { ...targetCourseToEnroll, enrolledCount: targetCourseToEnroll.enrolledCount + 1 };
+    setCourses(prev =>
+      prev.map(c => (c.id === targetCourseToEnroll.id ? updatedCourse : c))
+    );
+    syncCourseToFirestore(updatedCourse);
+
     const noticeExtra = sectionStatus.isSectionClosed
       ? ` (Asignado a la nueva ${targetCourseToEnroll.name} debido a que la sección anterior ya tiene ${sectionStatus.weeksElapsed} semanas iniciada).`
       : '';
@@ -854,7 +941,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
   };
 
-  // Drop enrollment
   const dropEnrollment = (enrollmentId: string): { success: boolean; message: string } => {
     const targetEnr = enrollments.find(e => e.id === enrollmentId);
     if (!targetEnr) return { success: false, message: 'Inscripción no encontrada.' };
@@ -862,13 +948,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setEnrollments(prev => prev.filter(e => e.id !== enrollmentId));
     setGrades(prev => prev.filter(g => g.enrollmentId !== enrollmentId));
 
-    setCourses(prev =>
-      prev.map(c =>
-        c.id === targetEnr.courseId
-          ? { ...c, enrolledCount: Math.max(0, c.enrolledCount - 1) }
-          : c
-      )
-    );
+    deleteEnrollmentFromFirestore(enrollmentId);
+
+    const targetCourse = courses.find(c => c.id === targetEnr.courseId);
+    if (targetCourse) {
+      const updatedCourse = { ...targetCourse, enrolledCount: Math.max(0, targetCourse.enrolledCount - 1) };
+      setCourses(prev =>
+        prev.map(c => (c.id === targetEnr.courseId ? updatedCourse : c))
+      );
+      syncCourseToFirestore(updatedCourse);
+    }
 
     sendBroadcastNotification(
       'ℹ️ Retiro de Asignatura',
@@ -881,19 +970,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return { success: true, message: `Asignatura ${targetEnr.courseName} retirada con éxito.` };
   };
 
-  // Grade update: Sistema vigesimal (1 al 20) • 4 Evaluaciones (25% cada una) • Mínimo aprobatorio: 10 ptos
   const updateGrade = (updatedGrade: GradeItem) => {
     const e1 = Number(updatedGrade.evaluacion1 ?? updatedGrade.parcial1) || 0;
     const e2 = Number(updatedGrade.evaluacion2 ?? updatedGrade.parcial2) || 0;
     const e3 = Number(updatedGrade.evaluacion3 ?? updatedGrade.practicas) || 0;
     const e4 = Number(updatedGrade.evaluacion4 ?? updatedGrade.examenFinal) || 0;
 
-    // Promedio de las 4 evaluaciones (25% cada una) sobre 20 pts
     const computedFinal = Number(((e1 + e2 + e3 + e4) / 4).toFixed(1));
     
     let computedStatus: GradeItem['status'] = 'En Cursado';
     if (e1 > 0 || e2 > 0 || e3 > 0 || e4 > 0 || updatedGrade.status === 'Aprobado' || updatedGrade.status === 'Reprobado') {
-      // Mínimo de nota aprobatoria: 10 puntos
       if (computedFinal >= 10) {
         computedStatus = 'Aprobado';
       } else {
@@ -917,8 +1003,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
 
     setGrades(prev => prev.map(g => (g.id === updatedGrade.id ? finalItem : g)));
+    syncGradeToFirestore(finalItem);
 
-    // Notify student
     sendBroadcastNotification(
       '📝 Calificación Actualizada',
       `Se han registrado tus notas en "${updatedGrade.courseName}". Tu nota final es ${computedFinal} / 20 pts (${computedStatus}).`,
@@ -928,13 +1014,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     );
   };
 
-  // Save/Update course
   const saveCourse = (course: Course): { success: boolean; message: string } => {
     if (courses.some(c => c.id !== course.id && c.code.trim().toLowerCase() === course.code.trim().toLowerCase())) {
       return { success: false, message: `Ya existe un curso registrado con el código ${course.code}.` };
     }
 
-    // Teacher Schedule Conflict Check
     const hasTeacher = course.teacherId && course.teacherId !== '' && course.teacherName !== 'Sin asignar' && course.teacherName !== 'Por definir';
     if (hasTeacher) {
       const otherTeacherCourses = courses.filter(c =>
@@ -956,17 +1040,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } else {
       setCourses(prev => [...prev, course]);
     }
+    syncCourseToFirestore(course);
+
     return { success: true, message: 'Asignatura guardada con éxito.' };
   };
 
-  // Helper to set course start date and automatically compute end date from duration weeks
   const setCourseStartDate = (courseId: string, startDate: string, durationWeeks?: number): { success: boolean; message: string } => {
     const targetCourse = courses.find(c => c.id === courseId);
     if (!targetCourse) return { success: false, message: 'El curso especificado no existe.' };
 
     const weeks = durationWeeks || targetCourse.duracionSemanas || targetCourse.syllabusWeeks || 16;
     
-    // Automatically calculate end date
     let calculatedEndDate = '';
     if (startDate) {
       try {
@@ -1002,8 +1086,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
 
     setCourses(prev => prev.map(c => (c.id === courseId ? updatedCourse : c)));
+    syncCourseToFirestore(updatedCourse);
 
-    // Notify enrolled students and teacher
     const courseEnrollments = enrollments.filter(e => e.courseId === courseId && e.status !== 'Cancelado');
     courseEnrollments.forEach(enr => {
       sendBroadcastNotification(
@@ -1024,12 +1108,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setCourses(prev => prev.filter(c => c.id !== courseId));
     setEnrollments(prev => prev.filter(e => e.courseId !== courseId));
     setGrades(prev => prev.filter(g => g.courseId !== courseId));
+    deleteCourseFromFirestore(courseId);
     sendToast(`La asignatura ${courseToDelete?.name || ''} (${courseToDelete?.code || ''}) ha sido dada de baja y eliminada exitosamente del sistema.`, 'info');
   };
 
   const resetCoursesToDefault = () => {
     setCourses(INITIAL_COURSES);
     localStorage.setItem('sga_courses_v8', JSON.stringify(INITIAL_COURSES));
+    INITIAL_COURSES.forEach(c => syncCourseToFirestore(c));
     sendToast('Catálogo de cursos restaurado a la oferta académica institucional predeterminada.', 'info');
   };
 
@@ -1038,6 +1124,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setClassrooms(INITIAL_CLASSROOMS);
     localStorage.setItem('sga_courses_v8', JSON.stringify(INITIAL_COURSES));
     localStorage.setItem('sga_classrooms_v8', JSON.stringify(INITIAL_CLASSROOMS));
+    INITIAL_COURSES.forEach(c => syncCourseToFirestore(c));
+    INITIAL_CLASSROOMS.forEach(cls => syncClassroomToFirestore(cls));
     sendToast('¡La oferta y aulas han sido armonizadas exitosamente!', 'schedule');
     return { success: true, message: 'Horarios optimizados y libres de colisiones.' };
   };
@@ -1049,10 +1137,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } else {
       setClassrooms(prev => [...prev, classroom]);
     }
+    syncClassroomToFirestore(classroom);
   };
 
   const deleteClassroom = (classroomId: string) => {
     setClassrooms(prev => prev.filter(c => c.id !== classroomId));
+    deleteClassroomFromFirestore(classroomId);
   };
 
   // Broadcast Notification
@@ -1075,15 +1165,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
 
     setNotifications(prev => [newNotif, ...prev]);
+    syncNotificationToFirestore(newNotif);
     setLatestToast(newNotif);
   };
 
   const markNotificationAsRead = (id: string) => {
-    setNotifications(prev => prev.map(n => (n.id === id ? { ...n, read: true } : n)));
+    setNotifications(prev => {
+      const updated = prev.map(n => (n.id === id ? { ...n, read: true } : n));
+      const target = updated.find(n => n.id === id);
+      if (target) syncNotificationToFirestore(target);
+      return updated;
+    });
   };
 
   const markAllNotificationsAsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    setNotifications(prev => {
+      const updated = prev.map(n => ({ ...n, read: true }));
+      updated.forEach(n => syncNotificationToFirestore(n));
+      return updated;
+    });
   };
 
   // Helper selectors
@@ -1093,7 +1193,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const getStudentGrades = (studentId: string) =>
     grades.filter(g => g.studentId === studentId);
 
-  // Synchronize course enrolledCount dynamically with actual active enrollments
   const synchronizedCourses = useMemo(() => {
     return courses.map(c => {
       const realEnrolled = enrollments.filter(
@@ -1134,7 +1233,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     ).length;
   };
 
-  // Real-Time Simulator for demonstration
   const triggerSimulatedRealTimeEvent = () => {
     const sampleEvents = [
       {
@@ -1171,7 +1269,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     ? Number((validGrades.reduce((acc, g) => acc + g.finalGrade, 0) / validGrades.length).toFixed(1))
     : 16.5;
 
-  // Mínimo de nota aprobatoria: 10 puntos (escala 1 al 20)
   const passedGrades = validGrades.filter(g => g.finalGrade >= 10).length;
   const passRateVal = validGrades.length > 0
     ? Number(((passedGrades / validGrades.length) * 100).toFixed(1))
@@ -1268,7 +1365,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         getTeacherCourses,
         getCourseGrades,
         getUnreadNotificationsCount,
-        triggerSimulatedRealTimeEvent
+        triggerSimulatedRealTimeEvent,
+        isCloudSynced
       }}
     >
       {children}
