@@ -76,31 +76,32 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ activeTab })
   return (
     <div className="space-y-6 pb-12">
       {/* Welcome Hero Banner */}
-      <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-blue-900 text-white rounded-2xl p-6 shadow-xl relative overflow-hidden">
-        <div className="absolute right-0 top-0 w-96 h-96 bg-indigo-400/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md text-xs font-semibold text-indigo-200 mb-2">
-              <Sparkles className="w-3.5 h-3.5" /> Portal del Estudiante • Período 2026-1
+      <div className="rounded-3xl bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-600 p-6 sm:p-8 text-white shadow-xl shadow-blue-500/10 relative overflow-hidden">
+        <div className="absolute right-0 top-0 w-96 h-96 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-xs font-bold uppercase tracking-wider text-sky-100">
+              <Sparkles className="w-3.5 h-3.5 text-sky-200" /> Portal del Estudiante • Período 2026-I
             </div>
-            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
+            <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
               ¡Hola, {currentUser.name}!
             </h2>
-            <p className="text-indigo-200 text-xs sm:text-sm mt-1 max-w-xl">
+            <p className="text-xs sm:text-sm text-sky-100 max-w-xl leading-relaxed">
               {currentUser.career} • {currentUser.semester}° Semestre • Matrícula: <strong className="text-white font-mono">{currentUser.code}</strong>
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="relative z-10 flex flex-wrap gap-3">
             <button
               onClick={() => generateStudentTranscriptPDF(currentUser, studentGrades)}
-              className="inline-flex items-center gap-2 bg-white text-indigo-900 hover:bg-indigo-50 font-bold px-4 py-2.5 rounded-xl text-xs shadow-md transition-all cursor-pointer"
+              className="px-5 py-3 bg-slate-950 hover:bg-slate-900 text-white font-bold text-xs sm:text-sm rounded-2xl shadow-lg transition-all flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
             >
-              <Download className="w-4 h-4" /> Certificado de Notas PDF
+              <Download className="w-4 h-4 text-sky-400" />
+              <span>Certificado de Notas PDF</span>
             </button>
             <button
               onClick={() => generateSchedulePDF(currentUser, studentEnrollments, courses)}
-              className="inline-flex items-center gap-2 bg-indigo-700/60 hover:bg-indigo-700 text-white border border-indigo-400/30 font-semibold px-4 py-2.5 rounded-xl text-xs backdrop-blur-md transition-all cursor-pointer"
+              className="px-4 py-3 bg-white/15 hover:bg-white/25 text-white border border-white/25 rounded-2xl text-xs sm:text-sm font-bold backdrop-blur-md transition-all flex items-center gap-2 cursor-pointer shadow-sm hover:scale-[1.02] active:scale-[0.98]"
             >
               <Calendar className="w-4 h-4" /> Mi Horario PDF
             </button>
@@ -115,8 +116,10 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ activeTab })
             <span className="text-xs font-medium">Promedio Ponderado</span>
             <Award className="w-4 h-4 text-emerald-500" />
           </div>
-          <div className="text-2xl font-black text-slate-900 dark:text-slate-100">{gpa} <span className="text-xs text-slate-400 font-normal">/100 pts</span></div>
-          <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold mt-1">Rendimiento Académico</p>
+          <div className="text-2xl font-black text-slate-900 dark:text-slate-100">{gpa} <span className="text-xs text-slate-400 font-normal">/20 pts</span></div>
+          <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold mt-1">
+            {gpa !== 'N/A' && Number(gpa) >= 10 ? 'Rendimiento Aprobatorio (≥ 10)' : 'Seguimiento Académico'}
+          </p>
         </div>
 
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
@@ -240,13 +243,13 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ activeTab })
                           {course.code}
                         </span>
                         <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                          grade?.status === 'Aprobado'
+                          grade?.status === 'Aprobado' || (grade && grade.finalGrade >= 10)
                             ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                            : grade?.status === 'Recuperación'
-                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                            : 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300'
+                            : (grade && grade.finalGrade > 0 && grade.finalGrade < 10)
+                            ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                            : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
                         }`}>
-                          {grade ? grade.status : 'En Curso'}
+                          {grade ? (grade.finalGrade >= 10 ? 'Aprobado' : (grade.finalGrade > 0 ? 'Reprobado' : 'En Curso')) : 'En Curso'}
                         </span>
                       </div>
 
@@ -257,11 +260,23 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ activeTab })
                       <p className="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
                         <UserCheck className="w-3.5 h-3.5 text-indigo-500" /> Docente: {course.teacherName}
                       </p>
-                      {course.specialty && (
-                        <span className="inline-block text-[10px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-2 py-0.5 rounded mt-1">
-                          Especialidad: {course.specialty}
-                        </span>
-                      )}
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                        {course.specialty && (
+                          <span className="inline-block text-[10px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-2 py-0.5 rounded">
+                            {course.specialty}
+                          </span>
+                        )}
+                        {course.horasAcademicas && (
+                          <span className="inline-block text-[10px] font-medium bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 px-2 py-0.5 rounded">
+                            ⏳ {course.horasAcademicas}h Académicas
+                          </span>
+                        )}
+                        {course.tamanoContenido && (
+                          <span className="inline-block text-[10px] font-medium bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded">
+                            📚 Contenido {course.tamanoContenido}
+                          </span>
+                        )}
+                      </div>
 
                       {/* Dates & Timeline Info */}
                       <div className="mt-3 bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-100 dark:border-slate-800 space-y-2">
@@ -291,28 +306,42 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ activeTab })
                         </div>
                       </div>
 
-                      {/* Grades Breakdown Box */}
+                      {/* Grades Breakdown Box (4 Evaluaciones 0-20 pts) */}
                       {grade && (
                         <div className="mt-3 grid grid-cols-5 gap-1.5 text-center text-[10px] bg-slate-50/70 dark:bg-slate-800/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
                           <div className="p-1 rounded bg-white dark:bg-slate-800 shadow-2xs">
-                            <div className="text-slate-400 font-semibold">P1 (25%)</div>
-                            <div className="font-mono font-bold text-slate-900 dark:text-slate-100 text-xs mt-0.5">{grade.parcial1}</div>
+                            <div className="text-slate-400 font-semibold">Ev 1 (25%)</div>
+                            <div className="font-mono font-bold text-slate-900 dark:text-slate-100 text-xs mt-0.5">
+                              {grade.evaluacion1 ?? grade.parcial1 ?? 0}
+                            </div>
                           </div>
                           <div className="p-1 rounded bg-white dark:bg-slate-800 shadow-2xs">
-                            <div className="text-slate-400 font-semibold">P2 (25%)</div>
-                            <div className="font-mono font-bold text-slate-900 dark:text-slate-100 text-xs mt-0.5">{grade.parcial2}</div>
+                            <div className="text-slate-400 font-semibold">Ev 2 (25%)</div>
+                            <div className="font-mono font-bold text-slate-900 dark:text-slate-100 text-xs mt-0.5">
+                              {grade.evaluacion2 ?? grade.parcial2 ?? 0}
+                            </div>
                           </div>
                           <div className="p-1 rounded bg-white dark:bg-slate-800 shadow-2xs">
-                            <div className="text-slate-400 font-semibold">Prác (20%)</div>
-                            <div className="font-mono font-bold text-slate-900 dark:text-slate-100 text-xs mt-0.5">{grade.practicas}</div>
+                            <div className="text-slate-400 font-semibold">Ev 3 (25%)</div>
+                            <div className="font-mono font-bold text-slate-900 dark:text-slate-100 text-xs mt-0.5">
+                              {grade.evaluacion3 ?? grade.practicas ?? 0}
+                            </div>
                           </div>
                           <div className="p-1 rounded bg-white dark:bg-slate-800 shadow-2xs">
-                            <div className="text-slate-400 font-semibold">Final (30%)</div>
-                            <div className="font-mono font-bold text-slate-900 dark:text-slate-100 text-xs mt-0.5">{grade.examenFinal}</div>
+                            <div className="text-slate-400 font-semibold">Ev 4 (25%)</div>
+                            <div className="font-mono font-bold text-slate-900 dark:text-slate-100 text-xs mt-0.5">
+                              {grade.evaluacion4 ?? grade.examenFinal ?? 0}
+                            </div>
                           </div>
-                          <div className="p-1 rounded bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800">
-                            <div className="text-indigo-600 dark:text-indigo-300 font-bold">Total</div>
-                            <div className="font-mono font-black text-indigo-700 dark:text-indigo-300 text-xs mt-0.5">{grade.finalGrade}</div>
+                          <div className={`p-1 rounded border ${
+                            grade.finalGrade >= 10
+                              ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
+                              : 'bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300'
+                          }`}>
+                            <div className="font-bold">Final</div>
+                            <div className="font-mono font-black text-xs mt-0.5">
+                              {grade.finalGrade} <span className="text-[8px] font-normal">/20</span>
+                            </div>
                           </div>
                         </div>
                       )}
@@ -357,10 +386,10 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ activeTab })
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
             <div>
               <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                <BookOpen className="w-5 h-5 text-indigo-600" /> Oferta Académica e Inscripción de Asignaturas
+                <BookOpen className="w-5 h-5 text-indigo-600" /> Oferta Académica e Inscripción de Cursos
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Selecciona materias para matricularte. El sistema verifica disponibilidad de cupo y evita cruces de horario.
+                Selecciona cursos para matricularte. El sistema verifica disponibilidad de cupo y evita cruces de horario.
               </p>
             </div>
 
@@ -382,7 +411,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ activeTab })
                 onChange={e => setDepartmentFilter(e.target.value)}
                 className="px-3 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none"
               >
-                <option value="all">Todas las Facultades</option>
+                <option value="all">Todas las Áreas</option>
                 {departments.map(d => (
                   <option key={d} value={d}>{d}</option>
                 ))}
@@ -483,7 +512,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ activeTab })
                             onClick={() => dropEnrollment(enrollmentObj.id)}
                             className="text-xs text-red-600 hover:text-red-800 dark:text-red-400 font-medium underline cursor-pointer"
                           >
-                            Retirar materia
+                            Retirar curso
                           </button>
                         )}
                       </div>
@@ -509,7 +538,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ activeTab })
                           {isFull ? (
                             <>Sin Cupo Disponible</>
                           ) : (
-                            <>Inscribirme en Asignatura</>
+                            <>Inscribirme en Curso</>
                           )}
                         </button>
                       </div>
@@ -528,7 +557,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ activeTab })
           <div className="flex items-center justify-between mb-6">
             <div>
               <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                <Award className="w-5 h-5 text-emerald-600" /> Registro de Calificaciones y Kardex Académico
+                <Award className="w-5 h-5 text-emerald-600" /> Registro de Calificaciones
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 Consulta el detalle de notas por evaluaciones parciales, trabajos prácticos y examen final.

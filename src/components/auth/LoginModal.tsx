@@ -24,6 +24,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { Course, AcademicActivity, UserRole } from '../../types';
 import { AcademiaValenciaLogo } from '../common/AcademiaValenciaLogo';
+import { checkCourseSectionClosed } from '../../utils/conflictDetector';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -95,13 +96,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   // Email format validation helper
   const isEmailValid = (val: string) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val.trim());
-  };
-
-  const handleQuickDemoLogin = (demoEmail: string, demoPass: string) => {
-    setErrorMsg(null);
-    setEmail(demoEmail);
-    setPassword(demoPass);
-    processLogin(demoEmail, demoPass);
   };
 
   const processLogin = (userEmail: string, userPass: string) => {
@@ -211,7 +205,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     if (courseTargetId) {
       const enrRes = enrollCourse(courseTargetId, authenticatedUser);
       if (!enrRes.success) {
-        // Stop and display the exact conflict warning or duplicate message
         setErrorMsg(enrRes.message);
         setIsLoading(false);
         return;
@@ -243,7 +236,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     >
       <div
         id="auth-modal-container"
-        className="bg-white dark:bg-slate-900 rounded-3xl max-w-lg w-full border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden relative my-6"
+        className="bg-white dark:bg-slate-900 rounded-3xl max-w-xl w-full border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden relative my-6"
       >
         {/* Modal Top Header */}
         <div className="bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-900 p-6 text-white relative">
@@ -267,15 +260,24 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           {(courseDisplayName || activityDisplayName) && (
             <div
               id="selected-course-banner"
-              className="mt-4 p-3.5 bg-indigo-500/20 border border-indigo-400/30 rounded-2xl text-xs space-y-1.5 shadow-inner"
+              className="mt-4 p-3.5 bg-indigo-500/20 border border-indigo-400/30 rounded-2xl text-xs space-y-2 shadow-inner"
             >
-              <div className="flex items-center gap-2 text-indigo-300 font-bold uppercase tracking-wider text-[10px]">
-                <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
-                <span>Curso Seleccionado para Matrícula</span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-indigo-300 font-bold uppercase tracking-wider text-[10px]">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+                  <span>Curso Seleccionado para Matrícula</span>
+                </div>
+                {activeCourse && checkCourseSectionClosed(activeCourse, courses).isSectionClosed && (
+                  <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-purple-500/40 text-purple-200 border border-purple-400/30 animate-pulse">
+                    🔒 Sección 01 Cerrada
+                  </span>
+                )}
               </div>
+
               <h4 className="text-sm font-bold text-white leading-snug">
                 {courseDisplayName || activityDisplayName}
               </h4>
+
               {activeCourse && (
                 <div className="flex flex-wrap items-center gap-2 text-[11px] text-indigo-200/90 pt-0.5">
                   <span className="font-mono bg-indigo-900/60 px-1.5 py-0.5 rounded border border-indigo-400/20">
@@ -287,12 +289,45 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   <span>Prof. {activeCourse.teacherName}</span>
                 </div>
               )}
+
+              {/* Section 02 Auto-assignment Notice if course already has >= 2 weeks in progress */}
+              {activeCourse && (() => {
+                const sectionStatus = checkCourseSectionClosed(activeCourse, courses);
+                if (!sectionStatus.isSectionClosed) return null;
+                return (
+                  <div className="mt-2 p-2.5 rounded-xl bg-purple-950/80 border border-purple-400/40 text-purple-100 text-[11px] leading-snug space-y-1">
+                    <div className="font-extrabold text-amber-300 flex items-center gap-1.5">
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span>Atención: Sección en Curso ({sectionStatus.weeksElapsed} semanas iniciada)</span>
+                    </div>
+                    <p className="text-slate-200">
+                      Esta sección se encuentra <strong>cerrada</strong> para nuevos ingresos. Al completar tu matrícula serás asignado a una <strong>nueva sección ({sectionStatus.nextSectionName})</strong> para iniciar tus clases desde la semana 01 sin desfasaje académico.
+                    </p>
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>
 
         {/* Tab Selector */}
         <div className="flex border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-1.5">
+          <button
+            id="tab-login"
+            onClick={() => {
+              setActiveTab('login');
+              setErrorMsg(null);
+            }}
+            className={`flex-1 py-2.5 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              activeTab === 'login'
+                ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm border border-slate-200/60 dark:border-slate-700/60'
+                : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <LogIn className="w-4 h-4" />
+            <span>Ingresar al Sistema (Login)</span>
+          </button>
+
           <button
             id="tab-register"
             onClick={() => {
@@ -308,26 +343,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             <UserPlus className="w-4 h-4" />
             <span>Matricularme (Registro)</span>
           </button>
-          
-          <button
-            id="tab-login"
-            onClick={() => {
-              setActiveTab('login');
-              setErrorMsg(null);
-            }}
-            className={`flex-1 py-2.5 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer ${
-              activeTab === 'login'
-                ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm border border-slate-200/60 dark:border-slate-700/60'
-                : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
-            }`}
-          >
-            <LogIn className="w-4 h-4" />
-            <span>Ya Tengo Cuenta</span>
-          </button>
         </div>
 
         {/* Body Content */}
-        <div className="p-6 max-h-[70vh] overflow-y-auto space-y-4">
+        <div className="p-6 max-h-[72vh] overflow-y-auto space-y-4">
           
           {/* Notifications */}
           {errorMsg && (
@@ -366,6 +385,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   <User className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
                   <input
                     id="input-reg-name"
+                    name="name"
+                    autoComplete="name"
                     type="text"
                     required
                     placeholder="Ej: Carlos Mendoza"
@@ -396,6 +417,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   <Mail className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
                   <input
                     id="input-reg-email"
+                    name="email"
+                    autoComplete="email"
                     type="email"
                     required
                     placeholder="estudiante@correo.com"
@@ -423,6 +446,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                     <FileText className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
                     <input
                       id="input-reg-cedula"
+                      name="cedula"
                       type="text"
                       required
                       placeholder="Ej: 28456123 o V-28456123"
@@ -444,6 +468,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                     <Phone className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
                     <input
                       id="input-reg-phone"
+                      name="tel"
+                      autoComplete="tel"
                       type="tel"
                       placeholder="Ej: +58 412 1234567"
                       value={regPhone}
@@ -466,6 +492,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   <Lock className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
                   <input
                     id="input-reg-password"
+                    name="new-password"
+                    autoComplete="new-password"
                     type={showRegPassword ? 'text' : 'password'}
                     required
                     placeholder="Mínimo 4 caracteres"
@@ -492,6 +520,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   <Lock className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
                   <input
                     id="input-reg-confirm-password"
+                    name="confirm-password"
+                    autoComplete="new-password"
                     type={showRegConfirmPassword ? 'text' : 'password'}
                     required
                     placeholder="Repite la contraseña creada"
@@ -551,7 +581,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             </form>
           ) : (
             /* ================= LOGIN FORM ================= */
-            <form onSubmit={handleLoginSubmit} className="space-y-4" id="form-login-user">
+            <form onSubmit={handleLoginSubmit} autoComplete="on" className="space-y-4" id="form-login-user">
+              
+              {/* Email / Username field */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Usuario, Cédula o Correo Electrónico
@@ -560,19 +592,22 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   <Mail className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
                   <input
                     id="input-login-email"
+                    name="username"
+                    autoComplete="username"
                     type="text"
                     required
-                    placeholder="Ej: admin, estudiante@correo.com o cédula"
+                    placeholder="Ej: 17374695, admin, o tu correo registrado"
                     value={email}
                     onChange={e => setEmail(e.target.value)}
-                    className="w-full pl-10 pr-3 py-2.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    className="w-full pl-10 pr-3 py-2.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
                   />
                 </div>
                 <p className="text-[10px] text-slate-400 mt-1">
-                  Puedes ingresar con tu correo registrado, cédula o alias asignado.
+                  Ingresa con tu Cédula de Identidad, usuario asignado o correo electrónico.
                 </p>
               </div>
 
+              {/* Password field */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Contraseña de Acceso
@@ -581,12 +616,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   <Lock className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
                   <input
                     id="input-login-password"
+                    name="password"
+                    autoComplete="current-password"
                     type={showLoginPassword ? 'text' : 'password'}
                     required
                     placeholder="••••••••"
                     value={password}
                     onChange={e => setPassword(e.target.value)}
-                    className="w-full pl-10 pr-10 py-2.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    className="w-full pl-10 pr-10 py-2.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
                   />
                   <button
                     type="button"
@@ -598,6 +635,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 </div>
               </div>
 
+              {/* Submit button */}
               <button
                 id="btn-submit-login"
                 type="submit"
@@ -617,7 +655,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               </button>
 
               {/* Switch to Register Link */}
-              <div className="text-center pt-1">
+              <div className="text-center pt-2">
                 <button
                   type="button"
                   onClick={() => {
@@ -629,38 +667,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   ¿Eres estudiante nuevo? Regístrate y matricúlate aquí
                 </button>
               </div>
-
-              {/* Demo Credentials Box */}
-              <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2 text-center">
-                  Credenciales Rápidas de Prueba
-                </span>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <div
-                    onClick={() => handleQuickDemoLogin('25684509', 'estudiante123')}
-                    className="p-2 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 rounded-xl border border-emerald-200 dark:border-emerald-800 transition-all cursor-pointer"
-                  >
-                    <span className="text-[11px] font-extrabold text-emerald-900 dark:text-emerald-300 block flex items-center gap-1">
-                      <GraduationCap className="w-3.5 h-3.5 text-emerald-600" /> Geogret Paez
-                    </span>
-                    <p className="text-[9px] text-slate-500 dark:text-slate-400">
-                      Cédula: 25684509 | Clave: estudiante123
-                    </p>
-                  </div>
-
-                  <div
-                    onClick={() => handleQuickDemoLogin('17374695', 'admin123')}
-                    className="p-2 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 rounded-xl border border-purple-200 dark:border-purple-800 transition-all cursor-pointer"
-                  >
-                    <span className="text-[11px] font-extrabold text-purple-900 dark:text-purple-300 block flex items-center gap-1">
-                      <ShieldCheck className="w-3.5 h-3.5 text-purple-600" /> Laura Garcías (Admin)
-                    </span>
-                    <p className="text-[9px] text-slate-500 dark:text-slate-400">
-                      Cédula: 17374695 | Clave: admin123
-                    </p>
-                  </div>
-                </div>
-              </div>
             </form>
           )}
 
@@ -669,3 +675,4 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     </div>
   );
 };
+

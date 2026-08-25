@@ -16,7 +16,7 @@ import {
   Calendar,
   Award,
   Building2,
-  FileSpreadsheet,
+  FileText,
   Bot,
   Sliders,
   Check,
@@ -83,7 +83,7 @@ export const RolePermissionsManager: React.FC = () => {
     { key: 'activities', label: 'Actividades Académicas', icon: <Calendar className="w-4 h-4" /> },
     { key: 'grades', label: 'Calificaciones y Actas', icon: <Award className="w-4 h-4" /> },
     { key: 'classrooms', label: 'Infraestructura y Aulas', icon: <Building2 className="w-4 h-4" /> },
-    { key: 'reports', label: 'Reportes y Analíticas', icon: <FileSpreadsheet className="w-4 h-4" /> },
+    { key: 'reports', label: 'Reportes y Constancias (PDF)', icon: <FileText className="w-4 h-4" /> },
     { key: 'security', label: 'Seguridad y Permisos', icon: <Lock className="w-4 h-4" /> },
     { key: 'ai', label: 'Asistente AVI (IA)', icon: <Bot className="w-4 h-4" /> }
   ];
@@ -108,35 +108,34 @@ export const RolePermissionsManager: React.FC = () => {
   return (
     <div className="space-y-6 pb-12">
       {/* Header Banner */}
-      <div className="bg-gradient-to-r from-slate-950 via-purple-950 to-indigo-950 text-white rounded-2xl p-6 shadow-xl border border-purple-900/50">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/40 flex items-center gap-1">
-                <ShieldCheck className="w-3 h-3 text-purple-400" /> Control de Acceso Granular
-              </span>
+      <div className="rounded-3xl bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-600 p-6 sm:p-8 text-white shadow-xl shadow-blue-500/10 relative overflow-hidden">
+        <div className="absolute right-0 top-0 w-96 h-96 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-xs font-bold uppercase tracking-wider text-sky-100">
+              <ShieldCheck className="w-3.5 h-3.5 text-sky-200" /> Control de Acceso Granular
             </div>
-            <h2 className="text-2xl font-extrabold tracking-tight mt-1">
+            <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
               Administración de Permisos y Roles Institucionales
             </h2>
-            <p className="text-slate-300 text-sm mt-1">
-              Configura de manera dinámica los privilegios, facultades y restricciones de cada uno de los 4 roles del sistema.
+            <p className="text-xs sm:text-sm text-sky-100 max-w-2xl leading-relaxed">
+              Configura de manera dinámica los privilegios, atribuciones y restricciones de cada uno de los 4 roles del sistema.
             </p>
           </div>
 
           {canManage && (
             <button
               onClick={() => setIsResetConfirmOpen(true)}
-              className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl font-bold text-xs shadow transition-all flex items-center gap-2 self-start md:self-auto cursor-pointer"
+              className="px-5 py-3 bg-slate-950 hover:bg-slate-900 text-white font-bold text-xs sm:text-sm rounded-2xl shadow-lg transition-all flex items-center gap-2 self-start md:self-auto cursor-pointer hover:scale-[1.02] active:scale-[0.98] shrink-0"
             >
-              <RotateCcw className="w-3.5 h-3.5 text-purple-400" />
-              Restablecer Valores de Fábrica
+              <RotateCcw className="w-4 h-4 text-sky-400" />
+              <span>Restablecer Valores de Fábrica</span>
             </button>
           )}
         </div>
 
         {/* Roles Metric Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-6 pt-5 border-t border-slate-800">
+        <div className="relative z-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-6 pt-5 border-t border-white/20">
           {roles.map(r => {
             const count = getRolePermissionCount(r.role);
             const total = permissionDefinitions.length;
@@ -145,8 +144,8 @@ export const RolePermissionsManager: React.FC = () => {
             return (
               <div
                 key={r.role}
-                className={`bg-slate-900/80 rounded-xl p-3 border transition-all ${
-                  selectedRoleFilter === r.role ? 'ring-2 ring-purple-500 bg-slate-800' : 'border-slate-800'
+                className={`rounded-2xl p-3.5 border transition-all ${
+                  selectedRoleFilter === r.role ? 'bg-white/25 border-white/40 ring-2 ring-white/60' : 'bg-white/10 backdrop-blur-md border-white/15'
                 }`}
               >
                 <div className="flex items-center justify-between">
@@ -154,21 +153,21 @@ export const RolePermissionsManager: React.FC = () => {
                     {r.icon}
                     <div>
                       <p className="text-xs font-bold text-white">{r.name}</p>
-                      <p className="text-[10px] text-slate-400">{r.subtitle}</p>
+                      <p className="text-[10px] text-sky-100">{r.subtitle}</p>
                     </div>
                   </div>
                 </div>
 
                 <div className="mt-3 flex items-center justify-between text-xs">
-                  <span className="text-[11px] text-slate-400">Privilegios Activos:</span>
+                  <span className="text-[11px] text-sky-100">Privilegios Activos:</span>
                   <span className="font-mono font-bold text-white">
                     {count} / {total} ({percentage}%)
                   </span>
                 </div>
 
-                <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mt-1.5">
+                <div className="w-full h-1.5 bg-black/20 rounded-full overflow-hidden mt-1.5">
                   <div
-                    className="h-full bg-purple-500 rounded-full"
+                    className="h-full bg-white rounded-full"
                     style={{ width: `${percentage}%` }}
                   />
                 </div>
@@ -325,7 +324,7 @@ export const RolePermissionsManager: React.FC = () => {
                           {def.category === 'activities' && <Calendar className="w-3.5 h-3.5 text-purple-500" />}
                           {def.category === 'grades' && <Award className="w-3.5 h-3.5 text-amber-500" />}
                           {def.category === 'classrooms' && <Building2 className="w-3.5 h-3.5 text-blue-500" />}
-                          {def.category === 'reports' && <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500" />}
+                          {def.category === 'reports' && <FileText className="w-3.5 h-3.5 text-[#FF6600]" />}
                           {def.category === 'security' && <Lock className="w-3.5 h-3.5 text-rose-500" />}
                           {def.category === 'ai' && <Bot className="w-3.5 h-3.5 text-teal-500" />}
                         </div>

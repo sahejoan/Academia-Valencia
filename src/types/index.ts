@@ -82,6 +82,8 @@ export interface Course {
   specialty?: string;
   startDate: string; // e.g. "2026-09-01"
   endDate: string;   // e.g. "2026-12-18"
+  startDateSetByAdmin?: boolean; // True when the administrator has officially scheduled the start date
+  startDatePending?: boolean;    // True when course reaches min quorum (3 students) and awaits admin date assignment
   syllabusWeeks?: number; // e.g. 16
   currentWeek?: number;   // e.g. 10
   prerequisites: string[]; // e.g. ["INF-100"]
@@ -93,7 +95,12 @@ export interface Course {
   // Campos adaptados de la tabla `curso` y `seccion` en MySQL
   id_curso?: number;
   categoria?: 'COMERCIAL' | 'INDUSTRIAL' | 'GERENCIAL' | 'ARTESANAL';
-  duracion?: string;
+  duracion?: string; // e.g. "16 Semanas", "8 Semanas (32 Horas)", "40 Horas Académicas"
+  duracionSemanas?: number;
+  horasAcademicas?: number;
+  horasPorSemana?: number;
+  tamanoContenido?: 'Corto / Intensivo' | 'Estándar' | 'Extenso / Diplomado';
+  costoSemanal?: number; // Costo semanal en USD ($12 o $10)
   imagen?: string;
   id_seccion?: number;
   codigo_seccion?: string;
@@ -139,12 +146,17 @@ export interface GradeItem {
   courseId: string;
   courseCode: string;
   courseName: string;
-  parcial1: number;      // 0-100 (25%)
-  parcial2: number;      // 0-100 (25%)
-  practicas: number;     // 0-100 (20%)
-  examenFinal: number;   // 0-100 (30%)
+  // Sistema de Evaluación Vigesimal (1 al 20) • 4 Evaluaciones (25% c/u) • Mínimo Aprobatorio: 10 pts
+  evaluacion1?: number;  // 0-20 (25%)
+  evaluacion2?: number;  // 0-20 (25%)
+  evaluacion3?: number;  // 0-20 (25%)
+  evaluacion4?: number;  // 0-20 (25%)
+  parcial1: number;      // Alias Evaluación 1 (0-20, 25%)
+  parcial2: number;      // Alias Evaluación 2 (0-20, 25%)
+  practicas: number;     // Alias Evaluación 3 (0-20, 25%)
+  examenFinal: number;   // Alias Evaluación 4 (0-20, 25%)
   asistencia: number;    // 0-100 %
-  finalGrade: number;    // 0-100
+  finalGrade: number;    // 0-20 (Mínimo aprobatorio: 10 pts)
   status: 'Aprobado' | 'Reprobado' | 'En Cursado' | 'Recuperación';
   updatedAt: string;
   feedback?: string;

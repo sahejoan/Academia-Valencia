@@ -37,7 +37,7 @@ export const AviFloatingChat: React.FC = () => {
       text: `¡Hola **${currentUser.name}**! 👋 Soy **AVI** (*Asistente Virtual Integrado*), tu agente asesor institucional de **Academia Valencia**.
 
 Estoy plenamente entrenado en todas las funciones y procesos del sistema:
-- 🏛️ **Planificación de Oferta 360°** (Aulas ➔ Cursos ➔ Horarios ➔ Profesores ➔ Matrícula)
+- 🏛️ **Planificación de Oferta** (Aulas ➔ Cursos ➔ Horarios ➔ Profesores ➔ Matrícula)
 - 📚 **Catálogo de 47 Cursos** (*Comercial, Industrial, Gerencial, Artesanal*)
 - 🎓 **Matrícula y Control por Cédula** (Prevención de duplicados y cruces)
 - 📊 **Calificaciones, Asistencia y Kardex** (Parciales, prácticas y actas)

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   Search,
-  FileSpreadsheet,
   Download,
   Users,
   BookOpen,
@@ -17,13 +16,14 @@ import {
   GraduationCap
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { generateStudentTranscriptPDF, generateCourseGradeActPDF } from '../../utils/pdfExport';
 import {
-  exportGradesToExcel,
-  exportCoursesToExcel,
-  exportClassroomsToExcel,
-  exportAnalyticsToExcel
-} from '../../utils/excelExport';
+  generateStudentTranscriptPDF,
+  generateCourseGradeActPDF,
+  generateAcademicOfferPDF,
+  generateClassroomsReportPDF,
+  generateGlobalGradesReportPDF,
+  generateAnalyticsReportPDF
+} from '../../utils/pdfExport';
 
 interface SubordinadoDashboardProps {
   activeTab: string;
@@ -87,25 +87,28 @@ export const SubordinadoDashboard: React.FC<SubordinadoDashboardProps> = ({ acti
     <div className="p-4 sm:p-6 lg:p-8 space-y-8 max-w-7xl mx-auto">
       
       {/* Top Welcome Banner */}
-      <div className="bg-gradient-to-r from-amber-700 via-amber-800 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-        <div>
-          <span className="px-3 py-1 rounded-full bg-amber-500/20 border border-amber-400/30 text-amber-200 text-xs font-bold uppercase tracking-wider">
-            Rol Subordinado • Consultas & Reportes
-          </span>
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight mt-2">
-            Modulo de Monitoreo e Informes Académicos
+      <div className="rounded-3xl bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-600 p-6 sm:p-8 text-white shadow-xl shadow-blue-500/10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 relative overflow-hidden">
+        <div className="absolute right-0 top-0 w-96 h-96 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="relative z-10 space-y-2">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-xs font-bold uppercase tracking-wider text-sky-100">
+            <FileText className="w-3.5 h-3.5 text-sky-200" /> Rol Subordinado • Consultas & Reportes
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
+            Módulo de Monitoreo e Informes Académicos
           </h1>
-          <p className="text-xs sm:text-sm text-amber-100 mt-1 max-w-xl leading-relaxed">
-            Acceso de consulta para expedientes de estudiantes, estado de matrículas, actas de calificaciones y generación de reportes ejecutivos en PDF y Excel.
+          <p className="text-xs sm:text-sm text-sky-100 max-w-xl leading-relaxed">
+            Acceso de consulta para expedientes de estudiantes, estado de matrículas, actas de calificaciones y generación de reportes ejecutivos en PDF oficial.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="relative z-10 flex items-center gap-3">
           <button
-            onClick={() => exportAnalyticsToExcel(analytics)}
-            className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold rounded-xl text-xs shadow-md transition-all flex items-center gap-2 cursor-pointer"
+            onClick={() => generateAnalyticsReportPDF(analytics, currentAcademicTerm)}
+            className="px-5 py-3 bg-slate-950 hover:bg-slate-900 text-white font-bold text-xs sm:text-sm rounded-2xl shadow-lg transition-all flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+            title="Descargar Informe Ejecutivo de Analíticas en PDF"
           >
-            <FileSpreadsheet className="w-4 h-4" /> Exportar Analítica
+            <FileText className="w-4 h-4 text-sky-400" />
+            <span>Informe Analítica (PDF)</span>
           </button>
         </div>
       </div>
@@ -141,7 +144,7 @@ export const SubordinadoDashboard: React.FC<SubordinadoDashboardProps> = ({ acti
           <div>
             <p className="text-xs text-slate-500 font-medium">Tasa de Aprobación</p>
             <p className="text-2xl font-black text-slate-900 dark:text-slate-100">{analytics.passRate}%</p>
-            <p className="text-[10px] text-slate-500 mt-0.5">Promedio: {analytics.averageGrade} / 100</p>
+            <p className="text-[10px] text-slate-500 mt-0.5">Promedio: {analytics.averageGrade} / 20 pts</p>
           </div>
         </div>
 
@@ -165,7 +168,7 @@ export const SubordinadoDashboard: React.FC<SubordinadoDashboardProps> = ({ acti
               Centro de Descarga Masiva
             </span>
             <h2 className="text-xl font-extrabold text-slate-900 dark:text-slate-100 mt-0.5">
-              Generación de Reportes Oficiales en PDF y Excel
+              Generación de Reportes Oficiales en PDF
             </h2>
           </div>
           <span className="text-xs text-slate-500 font-medium">Período: {currentAcademicTerm}</span>
@@ -173,69 +176,104 @@ export const SubordinadoDashboard: React.FC<SubordinadoDashboardProps> = ({ acti
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
           
-          <button
-            onClick={() => exportCoursesToExcel(courses)}
-            className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 hover:border-amber-500 transition-all text-left flex flex-col justify-between space-y-3 group cursor-pointer"
-          >
+          {/* Oferta Academica Card */}
+          <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 flex flex-col justify-between space-y-3">
             <div className="flex items-center justify-between">
-              <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-                <FileSpreadsheet className="w-5 h-5" />
+              <div className="w-10 h-10 rounded-xl bg-[#FF6600]/10 text-[#FF6600] flex items-center justify-center">
+                <FileText className="w-5 h-5" />
               </div>
-              <Download className="w-4 h-4 text-slate-400 group-hover:text-amber-500 transition-colors" />
+              <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-950/60 text-[#FF6600]">
+                47 Cursos
+              </span>
             </div>
             <div>
-              <p className="text-xs font-bold text-slate-900 dark:text-slate-100">Reporte de Oferta Académica</p>
-              <p className="text-[11px] text-slate-500 mt-0.5">Listado completo de cursos, cupos e inscritos (.XLSX)</p>
+              <p className="text-xs font-bold text-slate-900 dark:text-slate-100">Catálogo de Oferta Académica</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">Asignaturas, aulas, horarios y facilitadores.</p>
             </div>
-          </button>
+            <div className="pt-1">
+              <button
+                onClick={() => generateAcademicOfferPDF(courses, currentAcademicTerm)}
+                className="w-full py-2 px-3 bg-[#FF6600] hover:bg-orange-600 text-white rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                title="Descargar PDF con membrete oficial"
+              >
+                <FileText className="w-3.5 h-3.5" /> Generar PDF Oficial
+              </button>
+            </div>
+          </div>
 
-          <button
-            onClick={() => exportGradesToExcel(grades)}
-            className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 hover:border-amber-500 transition-all text-left flex flex-col justify-between space-y-3 group cursor-pointer"
-          >
+          {/* Consolidado General de Notas Card */}
+          <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 flex flex-col justify-between space-y-3">
             <div className="flex items-center justify-between">
               <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
-                <FileSpreadsheet className="w-5 h-5" />
+                <Award className="w-5 h-5" />
               </div>
-              <Download className="w-4 h-4 text-slate-400 group-hover:text-amber-500 transition-colors" />
+              <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-600">
+                Calificaciones
+              </span>
             </div>
             <div>
               <p className="text-xs font-bold text-slate-900 dark:text-slate-100">Consolidado General de Notas</p>
-              <p className="text-[11px] text-slate-500 mt-0.5">Todas las calificaciones registradas (.XLSX)</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">Sábana completa de evaluaciones parciales.</p>
             </div>
-          </button>
+            <div className="pt-1">
+              <button
+                onClick={() => generateGlobalGradesReportPDF(grades, currentAcademicTerm)}
+                className="w-full py-2 px-3 bg-[#FF6600] hover:bg-orange-600 text-white rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                title="Descargar Sábana Oficial en PDF"
+              >
+                <FileText className="w-3.5 h-3.5" /> Generar Sábana PDF
+              </button>
+            </div>
+          </div>
 
-          <button
-            onClick={() => exportClassroomsToExcel(classrooms)}
-            className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 hover:border-amber-500 transition-all text-left flex flex-col justify-between space-y-3 group cursor-pointer"
-          >
+          {/* Ocupacion de Infraestructura Card */}
+          <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 flex flex-col justify-between space-y-3">
             <div className="flex items-center justify-between">
               <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-950 text-purple-600 dark:text-purple-400 flex items-center justify-center">
                 <Building2 className="w-5 h-5" />
               </div>
-              <Download className="w-4 h-4 text-slate-400 group-hover:text-amber-500 transition-colors" />
+              <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950 text-purple-600">
+                Aulas
+              </span>
             </div>
             <div>
               <p className="text-xs font-bold text-slate-900 dark:text-slate-100">Ocupación de Infraestructura</p>
-              <p className="text-[11px] text-slate-500 mt-0.5">Disponibilidad de aulas y recursos (.XLSX)</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">Aforo, tipo de recinto y equipamiento.</p>
             </div>
-          </button>
+            <div className="pt-1">
+              <button
+                onClick={() => generateClassroomsReportPDF(classrooms)}
+                className="w-full py-2 px-3 bg-[#1E3A8A] hover:bg-blue-900 text-white rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                title="Descargar Informe Técnico PDF"
+              >
+                <FileText className="w-3.5 h-3.5" /> Informe Técnico PDF
+              </button>
+            </div>
+          </div>
 
-          <button
-            onClick={handleExportActaPDF}
-            className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 hover:border-amber-500 transition-all text-left flex flex-col justify-between space-y-3 group cursor-pointer"
-          >
+          {/* Acta Oficial Card */}
+          <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 flex flex-col justify-between space-y-3">
             <div className="flex items-center justify-between">
               <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-950 text-amber-600 dark:text-amber-400 flex items-center justify-center">
                 <FileText className="w-5 h-5" />
               </div>
-              <Download className="w-4 h-4 text-slate-400 group-hover:text-amber-500 transition-colors" />
+              <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-600">
+                Acta
+              </span>
             </div>
             <div>
               <p className="text-xs font-bold text-slate-900 dark:text-slate-100">Acta Oficial por Asignatura</p>
-              <p className="text-[11px] text-slate-500 mt-0.5">Documento membretado oficial (.PDF)</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">Membretado con firmas y sello institucional.</p>
             </div>
-          </button>
+            <div className="pt-1">
+              <button
+                onClick={handleExportActaPDF}
+                className="w-full py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" /> Generar Acta Oficial PDF
+              </button>
+            </div>
+          </div>
 
         </div>
       </div>
@@ -414,7 +452,7 @@ export const SubordinadoDashboard: React.FC<SubordinadoDashboardProps> = ({ acti
           <div className="flex gap-2 w-full sm:w-auto">
             <input
               type="text"
-              placeholder="Filtrar materia o profesor..."
+              placeholder="Filtrar curso o profesor..."
               value={courseSearch}
               onChange={e => setCourseSearch(e.target.value)}
               className="px-3 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
@@ -427,7 +465,7 @@ export const SubordinadoDashboard: React.FC<SubordinadoDashboardProps> = ({ acti
             <thead className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold uppercase text-[10px]">
               <tr>
                 <th className="p-3">Código</th>
-                <th className="p-3">Nombre Asignatura</th>
+                <th className="p-3">Nombre del Curso</th>
                 <th className="p-3">Docente Titular</th>
                 <th className="p-3">Modalidad</th>
                 <th className="p-3 text-center">Inscritos / Capacidad</th>

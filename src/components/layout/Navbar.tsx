@@ -1,5 +1,17 @@
-import React, { useState } from 'react';
-import { Bell, Menu, Radio, UserCheck, ShieldCheck, User as UserIcon, Globe, LogOut, FileSpreadsheet } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import {
+  Bell,
+  Menu,
+  Radio,
+  UserCheck,
+  ShieldCheck,
+  User as UserIcon,
+  Globe,
+  LogOut,
+  FileSpreadsheet,
+  Clock,
+  Activity
+} from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { UserRole } from '../../types';
 import { NotificationDrawer } from '../common/NotificationToast';
@@ -10,10 +22,104 @@ interface NavbarProps {
   onGoToPublicSite: () => void;
 }
 
+// Indicador de 'Sesión Activa' con Rol y Cronómetro en Tiempo Real
+const ActiveSessionBadge: React.FC<{
+  role: UserRole;
+  startTime: number | null;
+}> = ({ role, startTime }) => {
+  const [elapsedSeconds, setElapsedSeconds] = useState<number>(() => {
+    if (!startTime) return 0;
+    return Math.max(0, Math.floor((Date.now() - startTime) / 1000));
+  });
+
+  useEffect(() => {
+    if (!startTime) {
+      setElapsedSeconds(0);
+      return;
+    }
+
+    const updateTimer = () => {
+      setElapsedSeconds(Math.max(0, Math.floor((Date.now() - startTime) / 1000)));
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
+  }, [startTime]);
+
+  const formatElapsed = (totalSec: number) => {
+    const hours = Math.floor(totalSec / 3600);
+    const minutes = Math.floor((totalSec % 3600) / 60);
+    const seconds = totalSec % 60;
+
+    if (hours > 0) {
+      return `${hours}h ${minutes.toString().padStart(2, '0')}m ${seconds.toString().padStart(2, '0')}s`;
+    }
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const roleConfig: Record<UserRole, { label: string; badgeColor: string; dotColor: string }> = {
+    student: {
+      label: 'Estudiante',
+      badgeColor: 'bg-emerald-50/90 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/80',
+      dotColor: 'bg-emerald-500'
+    },
+    teacher: {
+      label: 'Docente',
+      badgeColor: 'bg-blue-50/90 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border-blue-200 dark:border-blue-800/80',
+      dotColor: 'bg-blue-500'
+    },
+    subordinado: {
+      label: 'Subordinado',
+      badgeColor: 'bg-amber-50/90 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-200 dark:border-amber-800/80',
+      dotColor: 'bg-amber-500'
+    },
+    admin: {
+      label: 'Administrador',
+      badgeColor: 'bg-purple-50/90 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border-purple-200 dark:border-purple-800/80',
+      dotColor: 'bg-purple-500'
+    }
+  };
+
+  const currentRoleConfig = roleConfig[role] || roleConfig.student;
+
+  return (
+    <div
+      id="active-session-indicator"
+      title={`Sesión en curso activa • Rol: ${currentRoleConfig.label} • Tiempo transcurrido: ${formatElapsed(elapsedSeconds)}`}
+      className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border text-xs font-medium shadow-2xs transition-all ${currentRoleConfig.badgeColor}`}
+    >
+      {/* Pulsing indicator dot */}
+      <div className="flex items-center gap-1.5">
+        <span className="relative flex h-2 w-2">
+          <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${currentRoleConfig.dotColor}`} />
+          <span className={`relative inline-flex rounded-full h-2 w-2 ${currentRoleConfig.dotColor}`} />
+        </span>
+        <span className="font-semibold tracking-tight text-[11px] uppercase opacity-90 hidden sm:inline">
+          Sesión Activa
+        </span>
+      </div>
+
+      <div className="h-3 w-[1px] bg-current opacity-25" />
+
+      {/* Role tag */}
+      <span className="font-bold text-xs">
+        {currentRoleConfig.label}
+      </span>
+
+      {/* Elapsed time clock */}
+      <div className="flex items-center gap-1 font-mono text-[11px] bg-white/80 dark:bg-slate-900/80 px-1.5 py-0.5 rounded-md border border-current/20 shadow-2xs">
+        <Clock className="w-3 h-3 opacity-70" />
+        <span className="tabular-nums font-semibold">{formatElapsed(elapsedSeconds)}</span>
+      </div>
+    </div>
+  );
+};
+
 export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, onGoToPublicSite }) => {
   const {
     currentUser,
-    switchRole,
+    sessionStartTime,
     activeTerm,
     setActiveTerm,
     getUnreadNotificationsCount,
@@ -56,10 +162,16 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, onGoToPublicSit
             </button>
           </div>
 
-          {/* Center: Role Switcher & Academic Term */}
-          <div className="hidden md:flex items-center gap-3">
+          {/* Center: Active Session Indicator & Academic Term */}
+          <div className="flex items-center gap-3">
+            {/* Indicador de Sesión Activa (Rol + Cronómetro de tiempo transcurrido) */}
+            <ActiveSessionBadge
+              role={currentUser.role}
+              startTime={sessionStartTime}
+            />
+
             {/* Academic Term */}
-            <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs">
+            <div className="hidden md:flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs">
               <span className="text-slate-500 dark:text-slate-400 font-medium">Período:</span>
               <select
                 value={activeTerm}

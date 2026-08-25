@@ -13,6 +13,8 @@ import { AcademicActivitiesManager } from './components/admin/AcademicActivities
 import { RolePermissionsManager } from './components/admin/RolePermissionsManager';
 import { UserManagement } from './components/admin/UserManagement';
 import { AcademicOfferPlanner } from './components/admin/AcademicOfferPlanner';
+import { StudentManagement } from './components/admin/StudentManagement';
+import { TeacherManagement } from './components/admin/TeacherManagement';
 import { PublicLandingPage } from './components/public/PublicLandingPage';
 import { AviFloatingChat } from './components/ai/AviFloatingChat';
 
@@ -31,6 +33,12 @@ function MainAppContent() {
       if (hash === 'portal' || hash === 'dashboard') {
         if (isAuthenticated) setCurrentView('system_portal');
         setActiveTab('dashboard');
+      } else if (hash === 'alumnos' || hash === 'estudiantes' || hash === 'students' || hash === 'students_admin') {
+        if (isAuthenticated) setCurrentView('system_portal');
+        setActiveTab('students_admin');
+      } else if (hash === 'docentes' || hash === 'profesores' || hash === 'teachers' || hash === 'teachers_admin') {
+        if (isAuthenticated) setCurrentView('system_portal');
+        setActiveTab('teachers_admin');
       } else if (hash === 'usuarios' || hash === 'users' || hash === 'users_admin') {
         if (isAuthenticated) setCurrentView('system_portal');
         setActiveTab('users_admin');
@@ -73,6 +81,14 @@ function MainAppContent() {
       return <AcademicAiAssistant />;
     }
 
+    if (activeTab === 'students_admin') {
+      return <StudentManagement />;
+    }
+
+    if (activeTab === 'teachers_admin') {
+      return <TeacherManagement />;
+    }
+
     if (activeTab === 'users_admin') {
       return <UserManagement />;
     }
@@ -97,7 +113,7 @@ function MainAppContent() {
       case 'student':
         return <StudentDashboard activeTab={activeTab} />;
       case 'teacher':
-        return <TeacherDashboard activeTab={activeTab} />;
+        return <TeacherDashboard activeTab={activeTab} onTabChange={setActiveTab} />;
       case 'subordinado':
         return <SubordinadoDashboard activeTab={activeTab} />;
       case 'admin':

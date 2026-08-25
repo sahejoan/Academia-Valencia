@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
 import {
   User,
   UserRole,
@@ -25,12 +25,13 @@ import {
   INITIAL_ROLE_PERMISSIONS,
   PERMISSION_DEFINITIONS
 } from '../data/initialData';
-import { detectSystemConflicts, checkStudentScheduleConflict } from '../utils/conflictDetector';
+import { detectSystemConflicts, checkStudentScheduleConflict, checkTeacherScheduleConflict, checkCourseSectionClosed } from '../utils/conflictDetector';
 
 interface AppContextType {
   currentUser: User;
   setCurrentUser: (user: User) => void;
   isAuthenticated: boolean;
+  sessionStartTime: number | null;
   login: (email: string, password?: string) => { success: boolean; message: string; user?: User };
   logout: () => void;
   registerUser: (
@@ -62,6 +63,7 @@ interface AppContextType {
   dropEnrollment: (enrollmentId: string) => { success: boolean; message: string };
   updateGrade: (updatedGrade: GradeItem) => void;
   saveCourse: (course: Course) => { success: boolean; message: string };
+  setCourseStartDate: (courseId: string, startDate: string, durationWeeks?: number) => { success: boolean; message: string };
   deleteCourse: (courseId: string) => void;
   resetCoursesToDefault: () => void;
   resolveAllConflictsAutomatically: () => { success: boolean; message: string };
@@ -111,7 +113,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   // Load initial or stored state
   const [users, setUsers] = useState<User[]>(() => {
-    const saved = localStorage.getItem('sga_users_v5');
+    const saved = localStorage.getItem('sga_users_v8');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -133,14 +135,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     return sessionStorage.getItem('sga_is_authenticated') === 'true';
   });
+  const [sessionStartTime, setSessionStartTime] = useState<number | null>(() => {
+    const isAuth = sessionStorage.getItem('sga_is_authenticated') === 'true';
+    const savedTime = sessionStorage.getItem('sga_session_start_time');
+    if (isAuth && savedTime) {
+      const parsed = parseInt(savedTime, 10);
+      if (!isNaN(parsed)) return parsed;
+    }
+    return isAuth ? Date.now() : null;
+  });
 
   const [activities, setActivities] = useState<AcademicActivity[]>(() => {
-    const saved = localStorage.getItem('sga_activities_v5');
+    const saved = localStorage.getItem('sga_activities_v8');
     return saved ? JSON.parse(saved) : INITIAL_ACTIVITIES;
   });
 
   const [courses, setCourses] = useState<Course[]>(() => {
-    const saved = localStorage.getItem('sga_courses_v5');
+    const saved = localStorage.getItem('sga_courses_v8');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -155,12 +166,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   });
 
   const [classrooms, setClassrooms] = useState<Classroom[]>(() => {
-    const saved = localStorage.getItem('sga_classrooms_v5');
+    const saved = localStorage.getItem('sga_classrooms_v8');
     return saved ? JSON.parse(saved) : INITIAL_CLASSROOMS;
   });
 
   const [permissions, setPermissions] = useState<RolePermissionsMap>(() => {
-    const saved = localStorage.getItem('sga_permissions_v5');
+    const saved = localStorage.getItem('sga_permissions_v8');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -179,17 +190,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   });
 
   const [enrollments, setEnrollments] = useState<Enrollment[]>(() => {
-    const saved = localStorage.getItem('sga_enrollments_v5');
+    const saved = localStorage.getItem('sga_enrollments_v8');
     return saved ? JSON.parse(saved) : INITIAL_ENROLLMENTS;
   });
 
   const [grades, setGrades] = useState<GradeItem[]>(() => {
-    const saved = localStorage.getItem('sga_grades_v5');
-    return saved ? JSON.parse(saved) : INITIAL_GRADES;
+    const saved = localStorage.getItem('sga_grades_v8');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (e) { /* fallback */ }
+    }
+    return INITIAL_GRADES;
   });
 
   const [notifications, setNotifications] = useState<NotificationItem[]>(() => {
-    const saved = localStorage.getItem('sga_notifications_v5');
+    const saved = localStorage.getItem('sga_notifications_v8');
     return saved ? JSON.parse(saved) : INITIAL_NOTIFICATIONS;
   });
 
@@ -198,15 +215,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Sync state to LocalStorage
   useEffect(() => {
-    localStorage.setItem('sga_users_v5', JSON.stringify(users));
+    localStorage.setItem('sga_users_v8', JSON.stringify(users));
   }, [users]);
 
   useEffect(() => {
-    localStorage.setItem('sga_activities_v5', JSON.stringify(activities));
+    localStorage.setItem('sga_activities_v8', JSON.stringify(activities));
   }, [activities]);
 
   useEffect(() => {
-    localStorage.setItem('sga_courses_v5', JSON.stringify(courses));
+    localStorage.setItem('sga_courses_v8', JSON.stringify(courses));
   }, [courses]);
 
   // Auth functions with hash handling and flexible aliases
@@ -265,16 +282,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     setCurrentUser(found);
     setIsAuthenticated(true);
+    const loginTimestamp = Date.now();
+    setSessionStartTime(loginTimestamp);
     sessionStorage.setItem('sga_is_authenticated', 'true');
     sessionStorage.setItem('sga_auth_user_id', found.id);
+    sessionStorage.setItem('sga_session_start_time', loginTimestamp.toString());
     sendToast(`¡Bienvenido de nuevo, ${found.name}!`, 'info');
     return { success: true, message: `Sesión iniciada correctamente como ${found.role}.`, user: found };
   };
 
   const logout = () => {
     setIsAuthenticated(false);
+    setSessionStartTime(null);
     sessionStorage.removeItem('sga_is_authenticated');
     sessionStorage.removeItem('sga_auth_user_id');
+    sessionStorage.removeItem('sga_session_start_time');
     localStorage.removeItem('sga_is_authenticated');
     localStorage.removeItem('sga_auth_user_id');
     sendToast('Has cerrado la sesión del sistema.', 'info');
@@ -366,8 +388,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     setCurrentUser(studentUser);
     setIsAuthenticated(true);
+    const regTimestamp = Date.now();
+    setSessionStartTime(regTimestamp);
     sessionStorage.setItem('sga_is_authenticated', 'true');
     sessionStorage.setItem('sga_auth_user_id', studentUser.id);
+    sessionStorage.setItem('sga_session_start_time', regTimestamp.toString());
     sendToast(`¡Identidad verificada! Bienvenido, ${studentUser.name}.`, 'info');
 
     return { success: true, message: 'Registro de estudiante completado exitosamente.', user: studentUser };
@@ -492,32 +517,32 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const resetRolePermissionsToDefault = () => {
     setPermissions(INITIAL_ROLE_PERMISSIONS);
-    localStorage.setItem('sga_permissions_v5', JSON.stringify(INITIAL_ROLE_PERMISSIONS));
+    localStorage.setItem('sga_permissions_v8', JSON.stringify(INITIAL_ROLE_PERMISSIONS));
     sendToast('Permisos de todos los roles restaurados a la configuración institucional.', 'info');
   };
 
   useEffect(() => {
-    localStorage.setItem('sga_permissions_v5', JSON.stringify(permissions));
+    localStorage.setItem('sga_permissions_v8', JSON.stringify(permissions));
   }, [permissions]);
 
   useEffect(() => {
-    localStorage.setItem('sga_classrooms_v5', JSON.stringify(classrooms));
+    localStorage.setItem('sga_classrooms_v8', JSON.stringify(classrooms));
   }, [classrooms]);
 
   useEffect(() => {
-    localStorage.setItem('sga_enrollments_v5', JSON.stringify(enrollments));
+    localStorage.setItem('sga_enrollments_v8', JSON.stringify(enrollments));
   }, [enrollments]);
 
   useEffect(() => {
-    localStorage.setItem('sga_users_v5', JSON.stringify(users));
+    localStorage.setItem('sga_users_v8', JSON.stringify(users));
   }, [users]);
 
   useEffect(() => {
-    localStorage.setItem('sga_grades_v5', JSON.stringify(grades));
+    localStorage.setItem('sga_grades_v8', JSON.stringify(grades));
   }, [grades]);
 
   useEffect(() => {
-    localStorage.setItem('sga_notifications_v5', JSON.stringify(notifications));
+    localStorage.setItem('sga_notifications_v8', JSON.stringify(notifications));
   }, [notifications]);
 
   // User Management Actions
@@ -607,7 +632,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         department:
           userToSave.department ||
           (userToSave.role === 'teacher'
-            ? 'Facultad de Tecnología e Informática'
+            ? 'Área de Tecnología e Informática'
             : userToSave.role === 'subordinado'
             ? 'Oficina de Consultas y Reportes'
             : 'Coordinación General')
@@ -640,8 +665,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const resetUsersToDefault = () => {
     setUsers(INITIAL_USERS);
-    localStorage.setItem('sga_users_v5', JSON.stringify(INITIAL_USERS));
-    sendToast('Directorio de usuarios restaurado a la configuración inicial.', 'info');
+    localStorage.setItem('sga_users_v8', JSON.stringify(INITIAL_USERS));
+    sendToast('Directorio de usuarios restaurado a la configuración inicial (Solo Administrador).', 'info');
   };
 
   // Switch role helper
@@ -652,7 +677,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (isAuthenticated) {
         sessionStorage.setItem('sga_auth_user_id', foundUser.id);
       }
-      sendToast(`Cambiaste al modo de vista: ${role === 'student' ? 'Estudiante' : role === 'teacher' ? 'Docente' : 'Administrador'}`, 'info');
+      sendToast(`Cambiaste al modo de vista: ${role === 'student' ? 'Estudiante' : role === 'teacher' ? 'Docente' : role === 'admin' ? 'Administrador' : 'Subordinado'}`, 'info');
+    } else {
+      sendToast(`No hay usuarios con el rol "${role === 'teacher' ? 'Docente' : role === 'student' ? 'Estudiante' : role}" registrados aún. Regístrelo como Administrador o mediante la página principal.`, 'warning');
     }
   };
 
@@ -703,8 +730,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       };
     }
 
-    // 2. Retrieve all other courses currently enrolled by this student
+    // 2. Retrieve all active courses currently enrolled by this student (excluding dropped/canceled)
     const studentEnrollments = enrollments.filter(e => {
+      if (e.status === 'Cancelado' || e.status === 'Retirado') return false;
       if (e.studentId === student.id) return true;
       if (studentCedulaClean) {
         const enrUser = [...INITIAL_USERS, ...users].find(u => u.id === e.studentId);
@@ -718,10 +746,45 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     // 3. Schedule Conflict Check across days and hours
     const conflictCheck = checkStudentScheduleConflict(course, studentCourses);
     if (conflictCheck.hasConflict) {
+      sendToast(conflictCheck.reason || 'Existe solapamiento de horarios con otro curso matriculado.', 'warning');
       return {
         success: false,
         message: `⚠️ ${conflictCheck.reason || 'Existe solapamiento de horarios con otro curso matriculado.'}`
       };
+    }
+
+    // 4. Check if course already has >= 2 weeks of classes in progress (Section Closed -> Auto Assign / Create Section 02)
+    const sectionStatus = checkCourseSectionClosed(course, courses);
+    let targetCourseToEnroll = course;
+
+    if (sectionStatus.isSectionClosed) {
+      // Find if next section already exists
+      const existingNextSection = courses.find(c => c.code === sectionStatus.nextSectionCode);
+      if (existingNextSection) {
+        targetCourseToEnroll = existingNextSection;
+      } else {
+        // Auto-create new section (e.g. Sección 02)
+        const nextSectionCourse: Course = {
+          ...course,
+          id: `curso-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
+          id_curso: Math.floor(100 + Math.random() * 900),
+          code: sectionStatus.nextSectionCode,
+          name: sectionStatus.nextSectionName,
+          enrolledCount: 0,
+          currentWeek: 1,
+          startDate: '', // Pending official start date assignment by admin once quorum reached
+          endDate: '',
+          startDateSetByAdmin: false,
+          startDatePending: false,
+          status: 'Activo'
+        };
+
+        // Add the newly spawned section to courses list
+        setCourses(prev => [...prev, nextSectionCourse]);
+        targetCourseToEnroll = nextSectionCourse;
+
+        sendToast(`Se ha aperturado la nueva ${sectionStatus.nextSectionName} (${sectionStatus.nextSectionCode}) para nuevos ingresos sin desfasaje.`, 'info');
+      }
     }
 
     // Create enrollment record
@@ -730,24 +793,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       studentId: student.id,
       studentName: student.name,
       studentCode: student.code,
-      courseId: course.id,
-      courseCode: course.code,
-      courseName: course.name,
+      courseId: targetCourseToEnroll.id,
+      courseCode: targetCourseToEnroll.code,
+      courseName: targetCourseToEnroll.name,
       enrolledAt: new Date().toISOString(),
       term: activeTerm,
       status: 'Inscrito'
     };
 
-    // Create empty initial grade item
+    // Create empty initial grade item (4 Evaluaciones de 25% c/u en escala 0-20)
     const newGrade: GradeItem = {
       id: `grd-${Date.now()}`,
       enrollmentId: newEnrollment.id,
       studentId: student.id,
       studentName: student.name,
       studentCode: student.code,
-      courseId: course.id,
-      courseCode: course.code,
-      courseName: course.name,
+      courseId: targetCourseToEnroll.id,
+      courseCode: targetCourseToEnroll.code,
+      courseName: targetCourseToEnroll.name,
+      evaluacion1: 0,
+      evaluacion2: 0,
+      evaluacion3: 0,
+      evaluacion4: 0,
       parcial1: 0,
       parcial2: 0,
       practicas: 0,
@@ -763,19 +830,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     // Update course enrolled count
     setCourses(prev =>
-      prev.map(c => (c.id === courseId ? { ...c, enrolledCount: c.enrolledCount + 1 } : c))
+      prev.map(c => (c.id === targetCourseToEnroll.id ? { ...c, enrolledCount: c.enrolledCount + 1 } : c))
     );
 
     // Notify user
+    const noticeExtra = sectionStatus.isSectionClosed
+      ? ` (Asignado a la nueva ${targetCourseToEnroll.name} debido a que la sección anterior ya tiene ${sectionStatus.weeksElapsed} semanas iniciada).`
+      : '';
+
     sendBroadcastNotification(
       '✅ Matrícula Exitosa',
-      `Te has matriculado exitosamente en "${course.name}" (${course.code}).`,
+      `Te has matriculado exitosamente en "${targetCourseToEnroll.name}" (${targetCourseToEnroll.code})${noticeExtra}`,
       student.id,
       'enrollment',
-      course.code
+      targetCourseToEnroll.code
     );
 
-    return { success: true, message: `Te has matriculado correctamente en ${course.name}.` };
+    return { 
+      success: true, 
+      message: sectionStatus.isSectionClosed
+        ? `Sección previa cerrada (${sectionStatus.weeksElapsed} semanas iniciada). Has sido asignado a la nueva sección: ${targetCourseToEnroll.name} (${targetCourseToEnroll.code}).`
+        : `Te has matriculado correctamente en ${targetCourseToEnroll.name}.`
+    };
   };
 
   // Drop enrollment
@@ -805,22 +881,36 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return { success: true, message: `Asignatura ${targetEnr.courseName} retirada con éxito.` };
   };
 
-  // Grade update
+  // Grade update: Sistema vigesimal (1 al 20) • 4 Evaluaciones (25% cada una) • Mínimo aprobatorio: 10 ptos
   const updateGrade = (updatedGrade: GradeItem) => {
-    // Calculate final grade weighted sum: P1 25%, P2 25%, Prac 20%, Final 30%
-    const p1 = Number(updatedGrade.parcial1) || 0;
-    const p2 = Number(updatedGrade.parcial2) || 0;
-    const pr = Number(updatedGrade.practicas) || 0;
-    const ef = Number(updatedGrade.examenFinal) || 0;
+    const e1 = Number(updatedGrade.evaluacion1 ?? updatedGrade.parcial1) || 0;
+    const e2 = Number(updatedGrade.evaluacion2 ?? updatedGrade.parcial2) || 0;
+    const e3 = Number(updatedGrade.evaluacion3 ?? updatedGrade.practicas) || 0;
+    const e4 = Number(updatedGrade.evaluacion4 ?? updatedGrade.examenFinal) || 0;
 
-    const computedFinal = Number((p1 * 0.25 + p2 * 0.25 + pr * 0.20 + ef * 0.30).toFixed(1));
+    // Promedio de las 4 evaluaciones (25% cada una) sobre 20 pts
+    const computedFinal = Number(((e1 + e2 + e3 + e4) / 4).toFixed(1));
+    
     let computedStatus: GradeItem['status'] = 'En Cursado';
-    if (computedFinal >= 60) computedStatus = 'Aprobado';
-    else if (computedFinal >= 40 && computedFinal < 60) computedStatus = 'Recuperación';
-    else computedStatus = 'Reprobado';
+    if (e1 > 0 || e2 > 0 || e3 > 0 || e4 > 0 || updatedGrade.status === 'Aprobado' || updatedGrade.status === 'Reprobado') {
+      // Mínimo de nota aprobatoria: 10 puntos
+      if (computedFinal >= 10) {
+        computedStatus = 'Aprobado';
+      } else {
+        computedStatus = 'Reprobado';
+      }
+    }
 
     const finalItem: GradeItem = {
       ...updatedGrade,
+      evaluacion1: e1,
+      evaluacion2: e2,
+      evaluacion3: e3,
+      evaluacion4: e4,
+      parcial1: e1,
+      parcial2: e2,
+      practicas: e3,
+      examenFinal: e4,
       finalGrade: computedFinal,
       status: computedStatus,
       updatedAt: new Date().toISOString()
@@ -831,7 +921,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     // Notify student
     sendBroadcastNotification(
       '📝 Calificación Actualizada',
-      `Se han actualizado tus calificaciones en "${updatedGrade.courseName}". Tu nota final estimada es ${computedFinal}/100.`,
+      `Se han registrado tus notas en "${updatedGrade.courseName}". Tu nota final es ${computedFinal} / 20 pts (${computedStatus}).`,
       updatedGrade.studentId,
       'grade',
       updatedGrade.courseCode
@@ -840,8 +930,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Save/Update course
   const saveCourse = (course: Course): { success: boolean; message: string } => {
-    if (courses.some(c => c.id !== course.id && c.code === course.code)) {
-      return { success: false, message: `Ya existe un curso con el código ${course.code}.` };
+    if (courses.some(c => c.id !== course.id && c.code.trim().toLowerCase() === course.code.trim().toLowerCase())) {
+      return { success: false, message: `Ya existe un curso registrado con el código ${course.code}.` };
+    }
+
+    // Teacher Schedule Conflict Check
+    const hasTeacher = course.teacherId && course.teacherId !== '' && course.teacherName !== 'Sin asignar' && course.teacherName !== 'Por definir';
+    if (hasTeacher) {
+      const otherTeacherCourses = courses.filter(c =>
+        c.id !== course.id &&
+        (c.teacherId === course.teacherId || (course.teacherName && c.teacherName?.toLowerCase() === course.teacherName.toLowerCase() && c.teacherName !== 'Sin asignar' && c.teacherName !== 'Por definir'))
+      );
+      const teacherConflict = checkTeacherScheduleConflict(course, otherTeacherCourses);
+      if (teacherConflict.hasConflict) {
+        sendToast(teacherConflict.reason || 'Conflicto de horario: El profesor no puede dictar dos cursos al mismo tiempo.', 'warning');
+        return {
+          success: false,
+          message: teacherConflict.reason || 'Conflicto de horario: El profesor ya tiene otra clase en este horario.'
+        };
+      }
     }
 
     if (courses.some(c => c.id === course.id)) {
@@ -850,6 +957,66 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setCourses(prev => [...prev, course]);
     }
     return { success: true, message: 'Asignatura guardada con éxito.' };
+  };
+
+  // Helper to set course start date and automatically compute end date from duration weeks
+  const setCourseStartDate = (courseId: string, startDate: string, durationWeeks?: number): { success: boolean; message: string } => {
+    const targetCourse = courses.find(c => c.id === courseId);
+    if (!targetCourse) return { success: false, message: 'El curso especificado no existe.' };
+
+    const weeks = durationWeeks || targetCourse.duracionSemanas || targetCourse.syllabusWeeks || 16;
+    
+    // Automatically calculate end date
+    let calculatedEndDate = '';
+    if (startDate) {
+      try {
+        const parts = startDate.split('-');
+        if (parts.length === 3) {
+          const year = parseInt(parts[0], 10);
+          const month = parseInt(parts[1], 10) - 1;
+          const day = parseInt(parts[2], 10);
+          const d = new Date(year, month, day);
+          d.setDate(d.getDate() + (weeks * 7));
+          const yyyy = d.getFullYear();
+          const mm = String(d.getMonth() + 1).padStart(2, '0');
+          const dd = String(d.getDate()).padStart(2, '0');
+          calculatedEndDate = `${yyyy}-${mm}-${dd}`;
+        } else {
+          const d = new Date(startDate);
+          d.setDate(d.getDate() + (weeks * 7));
+          calculatedEndDate = d.toISOString().split('T')[0];
+        }
+      } catch (e) {
+        calculatedEndDate = '';
+      }
+    }
+
+    const updatedCourse: Course = {
+      ...targetCourse,
+      startDate,
+      endDate: calculatedEndDate,
+      syllabusWeeks: weeks,
+      duracionSemanas: weeks,
+      startDateSetByAdmin: true,
+      startDatePending: false
+    };
+
+    setCourses(prev => prev.map(c => (c.id === courseId ? updatedCourse : c)));
+
+    // Notify enrolled students and teacher
+    const courseEnrollments = enrollments.filter(e => e.courseId === courseId && e.status !== 'Cancelado');
+    courseEnrollments.forEach(enr => {
+      sendBroadcastNotification(
+        '📅 Fecha de Inicio Oficial Programada',
+        `La Administración ha fijado el inicio del curso "${targetCourse.name}" (${targetCourse.code}) para el ${startDate}. Culminación estimada: ${calculatedEndDate}.`,
+        enr.studentId,
+        'announcement',
+        targetCourse.code
+      );
+    });
+
+    sendToast(`Fecha de inicio fijada para "${targetCourse.name}" (${startDate} ➔ ${calculatedEndDate}).`, 'schedule');
+    return { success: true, message: 'Fecha oficial de inicio y culminación guardada exitosamente.' };
   };
 
   const deleteCourse = (courseId: string) => {
@@ -862,16 +1029,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const resetCoursesToDefault = () => {
     setCourses(INITIAL_COURSES);
-    localStorage.setItem('sga_courses_v5', JSON.stringify(INITIAL_COURSES));
+    localStorage.setItem('sga_courses_v8', JSON.stringify(INITIAL_COURSES));
     sendToast('Catálogo de cursos restaurado a la oferta académica institucional predeterminada.', 'info');
   };
 
   const resolveAllConflictsAutomatically = () => {
     setCourses(INITIAL_COURSES);
     setClassrooms(INITIAL_CLASSROOMS);
-    localStorage.setItem('sga_courses_v5', JSON.stringify(INITIAL_COURSES));
-    localStorage.setItem('sga_classrooms_v5', JSON.stringify(INITIAL_CLASSROOMS));
-    sendToast('¡Todos los 23 conflictos de solapamiento han sido resueltos y armonizados exitosamente!', 'schedule');
+    localStorage.setItem('sga_courses_v8', JSON.stringify(INITIAL_COURSES));
+    localStorage.setItem('sga_classrooms_v8', JSON.stringify(INITIAL_CLASSROOMS));
+    sendToast('¡La oferta y aulas han sido armonizadas exitosamente!', 'schedule');
     return { success: true, message: 'Horarios optimizados y libres de colisiones.' };
   };
 
@@ -921,18 +1088,38 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Helper selectors
   const getStudentEnrollments = (studentId: string) =>
-    enrollments.filter(e => e.studentId === studentId);
+    enrollments.filter(e => e.studentId === studentId && e.status !== 'Cancelado');
 
   const getStudentGrades = (studentId: string) =>
     grades.filter(g => g.studentId === studentId);
 
+  // Synchronize course enrolledCount dynamically with actual active enrollments
+  const synchronizedCourses = useMemo(() => {
+    return courses.map(c => {
+      const realEnrolled = enrollments.filter(
+        e => e.courseId === c.id && e.status !== 'Cancelado'
+      ).length;
+      const isPending = realEnrolled >= 3 && !c.startDateSetByAdmin;
+      return {
+        ...c,
+        enrolledCount: realEnrolled,
+        startDatePending: isPending
+      };
+    });
+  }, [courses, enrollments]);
+
   const getStudentCourses = (studentId: string) => {
     const studentEnrs = getStudentEnrollments(studentId);
-    return courses.filter(c => studentEnrs.some(e => e.courseId === c.id));
+    return synchronizedCourses.filter(c => studentEnrs.some(e => e.courseId === c.id));
   };
 
-  const getTeacherCourses = (teacherId: string) =>
-    courses.filter(c => c.teacherId === teacherId);
+  const getTeacherCourses = (teacherId: string) => {
+    const teacherUser = users.find(u => u.id === teacherId);
+    const teacherName = teacherUser?.name.toLowerCase() || '';
+    return synchronizedCourses.filter(
+      c => c.teacherId === teacherId || (teacherName && c.teacherName.toLowerCase().includes(teacherName))
+    );
+  };
 
   const getCourseGrades = (courseId: string) =>
     grades.filter(g => g.courseId === courseId);
@@ -952,7 +1139,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const sampleEvents = [
       {
         title: '🔔 Publicación de Notas de Examen Final',
-        message: 'El profesor ha subido las calificaciones correspondientes al Examen Final de la materia.',
+        message: 'El profesor ha subido las calificaciones correspondientes al Examen Final del curso.',
         type: 'grade' as const
       },
       {
@@ -972,39 +1159,39 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // Computed conflicts and analytics
-  const conflicts = detectSystemConflicts(courses);
+  const conflicts = detectSystemConflicts(synchronizedCourses);
 
   const totalStudentsCount = users.filter(u => u.role === 'student').length;
   const totalTeachersCount = users.filter(u => u.role === 'teacher').length;
-  const totalCoursesCount = courses.length;
-  const totalEnrollmentsCount = enrollments.length;
+  const totalCoursesCount = synchronizedCourses.length;
+  const totalEnrollmentsCount = enrollments.filter(e => e.status !== 'Cancelado').length;
 
   const validGrades = grades.filter(g => g.finalGrade > 0);
   const avgGrade = validGrades.length > 0
     ? Number((validGrades.reduce((acc, g) => acc + g.finalGrade, 0) / validGrades.length).toFixed(1))
-    : 82.5;
+    : 16.5;
 
-  const passedGrades = validGrades.filter(g => g.finalGrade >= 60).length;
+  // Mínimo de nota aprobatoria: 10 puntos (escala 1 al 20)
+  const passedGrades = validGrades.filter(g => g.finalGrade >= 10).length;
   const passRateVal = validGrades.length > 0
     ? Number(((passedGrades / validGrades.length) * 100).toFixed(1))
-    : 88.0;
+    : 92.0;
 
-  const totalCap = courses.reduce((acc, c) => acc + c.capacity, 0);
-  const totalEnr = courses.reduce((acc, c) => acc + c.enrolledCount, 0);
-  const occupancyRate = totalCap > 0 ? Number(((totalEnr / totalCap) * 100).toFixed(1)) : 75.0;
+  const totalCap = synchronizedCourses.reduce((acc, c) => acc + c.capacity, 0);
+  const totalEnr = synchronizedCourses.reduce((acc, c) => acc + c.enrolledCount, 0);
+  const occupancyRate = totalCap > 0 ? Number(((totalEnr / totalCap) * 100).toFixed(1)) : 0.0;
 
-  const courseEnrollmentDistribution = courses.map(c => ({
+  const courseEnrollmentDistribution = synchronizedCourses.map(c => ({
     courseName: c.code,
     enrolled: c.enrolledCount,
     capacity: c.capacity
   }));
 
   const gradesDistribution = [
-    { range: '90 - 100 (Excelente)', count: grades.filter(g => g.finalGrade >= 90).length },
-    { range: '80 - 89 (Bueno)', count: grades.filter(g => g.finalGrade >= 80 && g.finalGrade < 90).length },
-    { range: '60 - 79 (Aprobado)', count: grades.filter(g => g.finalGrade >= 60 && g.finalGrade < 80).length },
-    { range: '40 - 59 (Recuperación)', count: grades.filter(g => g.finalGrade >= 40 && g.finalGrade < 60).length },
-    { range: '0 - 39 (Reprobado)', count: grades.filter(g => g.finalGrade < 40 && g.finalGrade > 0).length }
+    { range: '18 - 20 (Sobresaliente)', count: grades.filter(g => g.finalGrade >= 18).length },
+    { range: '14 - 17 (Notable / Distinguido)', count: grades.filter(g => g.finalGrade >= 14 && g.finalGrade < 18).length },
+    { range: '10 - 13 (Aprobado / Regular)', count: grades.filter(g => g.finalGrade >= 10 && g.finalGrade < 14).length },
+    { range: '01 - 09 (Reprobado)', count: grades.filter(g => g.finalGrade < 10 && g.finalGrade > 0).length }
   ];
 
   const classroomUsageByType = classrooms.map(cls => ({
@@ -1031,12 +1218,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         currentUser,
         setCurrentUser,
         isAuthenticated,
+        sessionStartTime,
         login,
         logout,
         registerUser,
         switchRole,
         users,
-        courses,
+        courses: synchronizedCourses,
         classrooms,
         activities,
         enrollments,
@@ -1051,6 +1239,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         dropEnrollment,
         updateGrade,
         saveCourse,
+        setCourseStartDate,
         deleteCourse,
         resetCoursesToDefault,
         resolveAllConflictsAutomatically,

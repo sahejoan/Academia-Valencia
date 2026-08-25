@@ -17,13 +17,19 @@ export const ClassroomScheduleMap: React.FC = () => {
   return (
     <div className="space-y-6 pb-12">
       {/* Header */}
-      <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white rounded-2xl p-6 shadow-xl">
-        <h2 className="text-2xl font-extrabold tracking-tight flex items-center gap-2">
-          <Building2 className="w-7 h-7 text-indigo-400" /> Disponibilidad de Aulas e Infraestructura
-        </h2>
-        <p className="text-blue-200 text-sm mt-1">
-          Visualización de aforos, equipamiento tecnológico y cuadrícula de ocupación de recintos académicos.
-        </p>
+      <div className="rounded-3xl bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-600 p-6 sm:p-8 text-white shadow-xl shadow-blue-500/10 relative overflow-hidden">
+        <div className="absolute right-0 top-0 w-96 h-96 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="relative z-10 space-y-2">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-xs font-bold uppercase tracking-wider text-sky-100">
+            <Building2 className="w-3.5 h-3.5 text-sky-200" /> Infraestructura & Espacios
+          </div>
+          <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
+            Disponibilidad de Aulas e Infraestructura
+          </h2>
+          <p className="text-xs sm:text-sm text-sky-100 max-w-2xl leading-relaxed">
+            Visualización de aforos, equipamiento tecnológico y cuadrícula de ocupación de recintos académicos.
+          </p>
+        </div>
       </div>
 
       {/* Building Filter Bar */}

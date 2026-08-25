@@ -6,14 +6,16 @@ import {
   CalendarDays,
   Building2,
   Users,
-  FileSpreadsheet,
+  FileText,
   Bot,
   BellRing,
   X,
   Sparkles,
   ShieldCheck,
   Calendar,
-  Layers
+  Layers,
+  GraduationCap,
+  Briefcase
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
@@ -24,6 +26,8 @@ export type ActiveTab =
   | 'grades'
   | 'schedule'
   | 'classrooms'
+  | 'students_admin'
+  | 'teachers_admin'
   | 'users_admin'
   | 'offer_admin'
   | 'course_admin'
@@ -53,7 +57,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           { id: 'dashboard' as ActiveTab, label: 'Resumen Principal', icon: <LayoutDashboard className="w-5 h-5" /> },
           { id: 'enrollment' as ActiveTab, label: 'Inscripción Cursos', icon: <BookOpenCheck className="w-5 h-5" /> },
           { id: 'activities' as ActiveTab, label: 'Actividades Extracurriculares', icon: <Calendar className="w-5 h-5" /> },
-          { id: 'grades' as ActiveTab, label: 'Mis Calificaciones (Kardex)', icon: <Award className="w-5 h-5" /> },
+          { id: 'grades' as ActiveTab, label: 'Mis Calificaciones', icon: <Award className="w-5 h-5" /> },
           { id: 'schedule' as ActiveTab, label: 'Mi Horario Semanal', icon: <CalendarDays className="w-5 h-5" /> },
           { id: 'ai_assistant' as ActiveTab, label: 'AVI (Asistente Integrado)', icon: <Bot className="w-5 h-5 text-indigo-400" /> }
         ];
@@ -71,25 +75,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
       case 'subordinado':
         return [
           { id: 'dashboard' as ActiveTab, label: 'Consultas & Monitoreo', icon: <LayoutDashboard className="w-5 h-5" /> },
-          { id: 'offer_admin' as ActiveTab, label: 'Planificador de Oferta 360°', icon: <Layers className="w-5 h-5 text-indigo-400" /> },
-          { id: 'users_admin' as ActiveTab, label: 'Directorio de Usuarios', icon: <Users className="w-5 h-5 text-indigo-400" /> },
+          { id: 'students_admin' as ActiveTab, label: 'Gestión de Alumnos', icon: <GraduationCap className="w-5 h-5 text-sky-400" /> },
+          { id: 'teachers_admin' as ActiveTab, label: 'Gestión de Profesores', icon: <Briefcase className="w-5 h-5 text-blue-400" /> },
+          { id: 'offer_admin' as ActiveTab, label: 'Planificador de Oferta', icon: <Layers className="w-5 h-5 text-indigo-400" /> },
+          { id: 'users_admin' as ActiveTab, label: 'Directorio General', icon: <Users className="w-5 h-5 text-slate-400" /> },
           { id: 'enrollment' as ActiveTab, label: 'Consulta Oferta & Cupos', icon: <BookOpenCheck className="w-5 h-5" /> },
           { id: 'activities' as ActiveTab, label: 'Consulta de Actividades', icon: <Calendar className="w-5 h-5" /> },
-          { id: 'grades' as ActiveTab, label: 'Consulta Notas & Kardex', icon: <Award className="w-5 h-5" /> },
-          { id: 'reports' as ActiveTab, label: 'Centro de Reportes PDF/Excel', icon: <FileSpreadsheet className="w-5 h-5" /> },
+          { id: 'grades' as ActiveTab, label: 'Consulta de Calificaciones', icon: <Award className="w-5 h-5" /> },
+          { id: 'reports' as ActiveTab, label: 'Centro de Reportes Oficiales (PDF)', icon: <FileText className="w-5 h-5 text-sky-400" /> },
           { id: 'ai_assistant' as ActiveTab, label: 'AVI (Asistente Integrado)', icon: <Bot className="w-5 h-5 text-indigo-400" /> }
         ];
 
       case 'admin':
         return [
           { id: 'dashboard' as ActiveTab, label: 'Panel & Analíticas Globales', icon: <LayoutDashboard className="w-5 h-5" /> },
-          { id: 'offer_admin' as ActiveTab, label: 'Planificador de Oferta 360°', icon: <Layers className="w-5 h-5 text-indigo-400" /> },
-          { id: 'users_admin' as ActiveTab, label: 'Gestión de Usuarios', icon: <Users className="w-5 h-5 text-indigo-400" /> },
+          { id: 'students_admin' as ActiveTab, label: 'Gestión de Alumnos', icon: <GraduationCap className="w-5 h-5 text-sky-400" /> },
+          { id: 'teachers_admin' as ActiveTab, label: 'Gestión de Profesores', icon: <Briefcase className="w-5 h-5 text-blue-400" /> },
+          { id: 'offer_admin' as ActiveTab, label: 'Planificador de Oferta', icon: <Layers className="w-5 h-5 text-indigo-400" /> },
           { id: 'course_admin' as ActiveTab, label: 'Catálogo de Cursos', icon: <BookOpenCheck className="w-5 h-5" /> },
+          { id: 'users_admin' as ActiveTab, label: 'Directorio General', icon: <Users className="w-5 h-5 text-slate-400" /> },
           { id: 'activities' as ActiveTab, label: 'Actividades Extracurriculares', icon: <Calendar className="w-5 h-5" /> },
           { id: 'permissions' as ActiveTab, label: 'Permisos & Roles', icon: <ShieldCheck className="w-5 h-5 text-purple-400" /> },
-          { id: 'classrooms' as ActiveTab, label: 'Aulas & Solapamientos', icon: <Building2 className="w-5 h-5" />, badge: conflicts.length > 0 ? conflicts.length : undefined },
-          { id: 'reports' as ActiveTab, label: 'Centro de Reportes PDF/Excel', icon: <FileSpreadsheet className="w-5 h-5" /> },
+          { id: 'classrooms' as ActiveTab, label: 'Disponibilidad de Aulas', icon: <Building2 className="w-5 h-5" />, badge: conflicts.length > 0 ? conflicts.length : undefined },
+          { id: 'reports' as ActiveTab, label: 'Centro de Reportes Oficiales (PDF)', icon: <FileText className="w-5 h-5 text-sky-400" /> },
           { id: 'ai_assistant' as ActiveTab, label: 'AVI (Asistente Integrado)', icon: <Bot className="w-5 h-5 text-indigo-400" /> }
         ];
     }
