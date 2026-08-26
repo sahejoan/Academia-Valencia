@@ -8,11 +8,24 @@ import {
   AcademicActivity,
   PermissionDefinition,
   RolePermissionsMap,
-  AcademicPeriod
+  AcademicPeriod,
+  InstitutionalAuthoritySettings
 } from '../types';
 import { OFFICIAL_COURSES, INSTITUTION_INFO } from './officialCourses';
 
 export { INSTITUTION_INFO, OFFICIAL_COURSES };
+
+// Configuración Oficial de Autoridades Firmantes de Actas y Documentos Institucionales
+export const INITIAL_AUTHORITY_SETTINGS: InstitutionalAuthoritySettings = {
+  directorName: 'Laura Coromoto Garcías de Rodríguez',
+  directorTitle: 'Directora General / Coordinación Académica',
+  directorCedula: '17.374.695',
+  institutionName: 'Academia Valencia',
+  institutionDepartment: 'Dirección General & Rectoría',
+  controlEstudiosName: 'Lcda. Valentina Sánchez M.',
+  controlEstudiosTitle: 'Coordinación de Control de Estudios y Admisión',
+  updatedAt: new Date().toISOString()
+};
 
 // Periodos Académicos de la Base de Datos MySQL
 export const INITIAL_PERIODS: AcademicPeriod[] = [

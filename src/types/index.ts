@@ -230,3 +230,14 @@ export interface PermissionDefinition {
 
 export type RolePermissionsMap = Record<UserRole, Record<PermissionKey, boolean>>;
 
+export interface InstitutionalAuthoritySettings {
+  directorName: string;
+  directorTitle: string;
+  directorCedula?: string;
+  institutionName: string;
+  institutionDepartment?: string;
+  controlEstudiosName?: string;
+  controlEstudiosTitle?: string;
+  updatedAt?: string;
+}
+

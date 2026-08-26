@@ -32,6 +32,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { User, UserRole } from '../../types';
 import { generateUsersDirectoryPDF } from '../../utils/pdfExport';
+import { formatDecimal } from '../../utils/gradeHelpers';
 
 export const UserManagement: React.FC = () => {
   const {
@@ -149,7 +150,7 @@ export const UserManagement: React.FC = () => {
       const studentGrades = grades.filter(g => g.studentId === user.id);
       const avg =
         studentGrades.length > 0
-          ? (studentGrades.reduce((sum, g) => sum + g.finalGrade, 0) / studentGrades.length).toFixed(1)
+          ? formatDecimal(studentGrades.reduce((sum, g) => sum + g.finalGrade, 0) / studentGrades.length, 1, false)
           : null;
       return {
         label: 'Cursos Inscritos',

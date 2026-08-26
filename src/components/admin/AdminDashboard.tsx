@@ -24,7 +24,8 @@ import {
   BookOpenCheck,
   Activity,
   Bell,
-  ArrowRight
+  ArrowRight,
+  FileSignature
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -47,6 +48,12 @@ import {
   generateAnalyticsReportPDF
 } from '../../utils/pdfExport';
 import { checkCourseSectionClosed } from '../../utils/conflictDetector';
+import {
+  getCourseAreaName,
+  getCourseAreaBadgeClasses,
+  courseMatchesAreaFilter,
+  ACADEMIC_AREAS
+} from '../../utils/areaHelpers';
 
 interface AdminDashboardProps {
   activeTab: string;
@@ -146,8 +153,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab }) => 
       c.code.toLowerCase().includes(courseSearch.toLowerCase()) ||
       c.name.toLowerCase().includes(courseSearch.toLowerCase()) ||
       (c.specialty && c.specialty.toLowerCase().includes(courseSearch.toLowerCase())) ||
+      (c.department && c.department.toLowerCase().includes(courseSearch.toLowerCase())) ||
       c.teacherName.toLowerCase().includes(courseSearch.toLowerCase());
-    const matchesDept = selectedDept === 'all' || c.department === selectedDept;
+    const matchesDept = courseMatchesAreaFilter(c, selectedDept);
     
     const count = c.enrolledCount || 0;
     const matchesQuorum =
@@ -159,7 +167,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab }) => 
     return matchesSearch && matchesDept && matchesQuorum;
   });
 
-  const departments = ['all', ...Array.from(new Set(courses.map(c => c.department)))];
+  const areaOptions = [
+    { key: 'all', label: `Todas las Áreas (${courses.length} Cursos)` },
+    { key: 'COMERCIAL', label: `Área Comercial (${courses.filter(c => courseMatchesAreaFilter(c, 'COMERCIAL')).length} Cursos)` },
+    { key: 'INDUSTRIAL', label: `Área Industrial (${courses.filter(c => courseMatchesAreaFilter(c, 'INDUSTRIAL')).length} Cursos)` },
+    { key: 'GERENCIAL', label: `Área Gerencial (${courses.filter(c => courseMatchesAreaFilter(c, 'GERENCIAL')).length} Cursos)` },
+    { key: 'ARTESANAL', label: `Área Artesanal (${courses.filter(c => courseMatchesAreaFilter(c, 'ARTESANAL')).length} Cursos)` }
+  ];
 
   const handleOpenQuickDateModal = (course: Course) => {
     setQuickDateCourse(course);
@@ -725,10 +739,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab }) => 
             <select
               value={selectedDept}
               onChange={e => setSelectedDept(e.target.value)}
-              className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-none"
+              className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer"
             >
-              {departments.map(d => (
-                <option key={d} value={d}>{d === 'all' ? 'Todos los Departamentos' : d}</option>
+              {areaOptions.map(opt => (
+                <option key={opt.key} value={opt.key}>{opt.label}</option>
               ))}
             </select>
           </div>
@@ -739,6 +753,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab }) => 
                 <tr>
                   <th className="px-3 py-3 rounded-l-xl">Código</th>
                   <th className="px-3 py-3">Nombre Asignatura / Especialidad</th>
+                  <th className="px-3 py-3 text-center">Área Académica</th>
                   <th className="px-3 py-3 text-center">Estado de Quórum</th>
                   <th className="px-3 py-3">Fecha de Inicio & Culminación</th>
                   <th className="px-3 py-3">Profesor Titular</th>
@@ -750,12 +765,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab }) => 
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredCourses.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-10 text-slate-400">
+                    <td colSpan={9} className="text-center py-10 text-slate-400">
                       <p className="font-semibold text-sm">No se encontraron asignaturas registradas.</p>
                       <p className="text-xs mt-1 text-slate-500">Puedes crear una nueva o restaurar el catálogo oficial de la institución.</p>
                       <button
                         onClick={resetCoursesToDefault}
-                        className="mt-3 px-4 py-1.5 bg-indigo-600 text-white rounded-xl text-xs font-bold"
+                        className="mt-3 px-4 py-1.5 bg-indigo-600 text-white rounded-xl text-xs font-bold cursor-pointer"
                       >
                         Restaurar Asignaturas Oficiales
                       </button>
@@ -771,10 +786,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab }) => 
                         </td>
                         <td className="px-3 py-3">
                           <div className="font-bold text-slate-900 dark:text-slate-100">{c.name}</div>
-                          <span className="inline-block text-[10px] font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.5 rounded mt-0.5">
-                            {c.specialty || c.department}
-                          </span>
+                          {c.specialty && (
+                            <span className="inline-block text-[10px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">
+                              {c.specialty}
+                            </span>
+                          )}
                           <span className="block text-[10px] font-normal text-slate-400 mt-0.5">{c.modality} • {c.duracion || '40 Horas'}</span>
+                        </td>
+                        <td className="px-3 py-3 text-center whitespace-nowrap">
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] ${getCourseAreaBadgeClasses(c)}`}>
+                            {getCourseAreaName(c)}
+                          </span>
                         </td>
                         <td className="px-3 py-3 text-center">
                           {hasQuorum ? (
@@ -1035,7 +1057,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab }) => 
                   Informe Ejecutivo de Analíticas
                 </h4>
                 <p className="text-xs text-slate-500 mb-4">
-                  Resumen de KPIs institucionales, distribución por áreas académicas y rendimiento.
+                  Resumen institucional, distribución por áreas académicas y rendimiento.
                 </p>
               </div>
               <button
@@ -1043,9 +1065,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab }) => 
                 className="w-full py-2.5 px-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
                 title="Descargar Informe Ejecutivo de Analíticas en PDF"
               >
-                <FileText className="w-4 h-4" /> Informe KPIs (PDF)
+                <FileText className="w-4 h-4" /> Informe PDF
               </button>
             </div>
+          </div>
+
+          {/* Quick Config: Firmantes Oficiales y Autoridades */}
+          <div className="mt-6 p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-transparent border border-amber-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                <FileSignature className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                  Configuración de Firmas y Autoridades Oficiales
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Registra y actualiza los datos del Director, Coordinador o Encargado que firma las actas de notas y documentos.
+                </p>
+              </div>
+            </div>
+            <a
+              href="#firmas"
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shrink-0 shadow-sm"
+            >
+              <FileSignature className="w-3.5 h-3.5" /> Administrar Firmantes
+            </a>
           </div>
         </div>
       )}

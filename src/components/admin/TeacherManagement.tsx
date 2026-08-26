@@ -31,6 +31,12 @@ import { useApp } from '../../context/AppContext';
 import { User, Course, GradeItem } from '../../types';
 import { generateTeacherWorkloadPDF, generateCourseGradeActPDF } from '../../utils/pdfExport';
 import { checkTeacherScheduleConflict } from '../../utils/conflictDetector';
+import {
+  getCourseAreaName,
+  getCourseAreaBadgeClasses,
+  courseMatchesAreaFilter,
+  ACADEMIC_AREAS
+} from '../../utils/areaHelpers';
 
 export const TeacherManagement: React.FC = () => {
   const {
@@ -61,6 +67,8 @@ export const TeacherManagement: React.FC = () => {
   const [isAssignCourseModalOpen, setIsAssignCourseModalOpen] = useState(false);
   const [selectedTeacher, setSelectedTeacher] = useState<User | null>(null);
   const [selectedCourseToAssign, setSelectedCourseToAssign] = useState<string>('');
+  const [assignSearchTerm, setAssignSearchTerm] = useState<string>('');
+  const [assignCategoryFilter, setAssignCategoryFilter] = useState<string>('all');
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
 
@@ -336,11 +344,27 @@ export const TeacherManagement: React.FC = () => {
     }
   };
 
-  // Courses not currently assigned to selected teacher
-  const otherCourses = useMemo(() => {
-    if (!selectedTeacher) return [];
-    return courses.filter(c => c.teacherId !== selectedTeacher.id && c.teacherName !== selectedTeacher.name);
-  }, [selectedTeacher, courses]);
+  // Courses for the assignment modal (all courses from catalog with assignment indicators)
+  const allAssignCandidates = useMemo(() => {
+    return courses;
+  }, [courses]);
+
+  // Filtered courses for the modal search and area tabs
+  const filteredOtherCourses = useMemo(() => {
+    return allAssignCandidates.filter(c => {
+      const matchCat = courseMatchesAreaFilter(c, assignCategoryFilter);
+      const search = assignSearchTerm.toLowerCase().trim();
+      if (!search) return matchCat;
+      const matchSearch =
+        c.name.toLowerCase().includes(search) ||
+        c.code.toLowerCase().includes(search) ||
+        (c.categoria && c.categoria.toLowerCase().includes(search)) ||
+        (c.department && c.department.toLowerCase().includes(search)) ||
+        (c.specialty && c.specialty.toLowerCase().includes(search)) ||
+        (c.description && c.description.toLowerCase().includes(search));
+      return matchCat && matchSearch;
+    });
+  }, [allAssignCandidates, assignCategoryFilter, assignSearchTerm]);
 
   return (
     <div className="space-y-6">
@@ -1023,20 +1047,25 @@ export const TeacherManagement: React.FC = () => {
 
       {/* MODAL 2: ASIGNAR CURSO AL PROFESOR */}
       {isAssignCourseModalOpen && selectedTeacher && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-lg w-full border border-slate-200 dark:border-slate-800 shadow-2xl p-6 space-y-5 animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-2xl w-full border border-slate-200 dark:border-slate-800 shadow-2xl p-5 sm:p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150 my-auto">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">
-                  Asignar Curso al Profesor
+                <h3 className="text-lg font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                  <BookOpen className="w-5 h-5 text-blue-600" /> Asignar Curso al Profesor
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Profesor: <strong className="text-slate-800 dark:text-slate-200">{selectedTeacher.name}</strong> ({selectedTeacher.code})
+                  Profesor: <strong className="text-slate-800 dark:text-slate-200">{selectedTeacher.name}</strong> ({selectedTeacher.code || selectedTeacher.cedula})
                 </p>
               </div>
               <button
-                onClick={() => setIsAssignCourseModalOpen(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600"
+                onClick={() => {
+                  setIsAssignCourseModalOpen(false);
+                  setSelectedCourseToAssign('');
+                  setAssignSearchTerm('');
+                  setAssignCategoryFilter('all');
+                }}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1046,38 +1075,206 @@ export const TeacherManagement: React.FC = () => {
             <div className="p-3 bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/50 rounded-xl text-xs flex items-start gap-2.5 text-blue-800 dark:text-blue-200">
               <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
               <p className="text-[11px] leading-relaxed">
-                Al asignar un curso, se habilitará automáticamente la carga horaria semanal, las secciones y los reportes oficiales para este profesor.
+                Selecciona la asignatura del catálogo oficial para asignar a la carga académica de este profesor. Se validará automáticamente la disponibilidad horaria.
               </p>
             </div>
 
+            {/* Search & Area Filter Bar */}
+            <div className="space-y-2.5">
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Buscar curso por nombre o código (ej: Programación, COM-01, Robótica)..."
+                  value={assignSearchTerm}
+                  onChange={e => setAssignSearchTerm(e.target.value)}
+                  className="w-full pl-9.5 pr-8 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {assignSearchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => setAssignSearchTerm('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+
+              {/* Area Filter Pills */}
+              <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                <span className="text-[11px] text-slate-500 font-semibold mr-1">Áreas:</span>
+                {[
+                  { id: 'all', label: `Todas (${allAssignCandidates.length})` },
+                  { id: 'COMERCIAL', label: `Comercial (${allAssignCandidates.filter(c => courseMatchesAreaFilter(c, 'COMERCIAL')).length})` },
+                  { id: 'INDUSTRIAL', label: `Industrial (${allAssignCandidates.filter(c => courseMatchesAreaFilter(c, 'INDUSTRIAL')).length})` },
+                  { id: 'GERENCIAL', label: `Gerencial (${allAssignCandidates.filter(c => courseMatchesAreaFilter(c, 'GERENCIAL')).length})` },
+                  { id: 'ARTESANAL', label: `Artesanal (${allAssignCandidates.filter(c => courseMatchesAreaFilter(c, 'ARTESANAL')).length})` }
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setAssignCategoryFilter(tab.id)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                      assignCategoryFilter === tab.id
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <form onSubmit={handleAssignCourseToTeacher} className="space-y-4">
+              {/* Interactive Course Selection Cards */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  Catálogo de Cursos ({filteredOtherCourses.length} cursos disponibles según filtro):
+                </label>
+
+                <div className="max-h-64 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800/80 bg-slate-50/50 dark:bg-slate-900/50 p-1 space-y-1">
+                  {filteredOtherCourses.length === 0 ? (
+                    <div className="p-6 text-center text-xs text-slate-500">
+                      No se encontraron cursos que coincidan con &quot;{assignSearchTerm}&quot;.
+                    </div>
+                  ) : (
+                    filteredOtherCourses.map(c => {
+                      const isSelected = selectedCourseToAssign === c.id;
+                      const isAssignedToThisTeacher = (c.teacherId === selectedTeacher.id) || 
+                        (Boolean(c.teacherName) && Boolean(selectedTeacher.name) && c.teacherName.toLowerCase() === selectedTeacher.name.toLowerCase());
+                      const hasConflict = checkTeacherScheduleConflict(c, teacherAssignedCourses.filter(tc => tc.id !== c.id)).hasConflict;
+                      const isAssignedToOther = !isAssignedToThisTeacher && c.teacherName && c.teacherName !== 'Sin asignar' && c.teacherName !== 'Por definir';
+
+                      return (
+                        <div
+                          key={c.id}
+                          onClick={() => setSelectedCourseToAssign(c.id)}
+                          className={`p-3 rounded-xl cursor-pointer transition-all flex items-start justify-between gap-3 ${
+                            isSelected
+                              ? 'bg-blue-50 dark:bg-blue-950/60 border-2 border-blue-600 shadow-sm'
+                              : isAssignedToThisTeacher
+                              ? 'bg-blue-50/30 dark:bg-blue-950/20 hover:bg-blue-50/60 border border-blue-200/70 dark:border-blue-900/50'
+                              : 'bg-white dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-700/50'
+                          }`}
+                        >
+                          <div className="flex-1 min-w-0 space-y-1">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-bold text-[10px] font-mono">
+                                {c.code}
+                              </span>
+                              <span className="font-bold text-xs text-slate-900 dark:text-white truncate">
+                                {c.name}
+                              </span>
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${getCourseAreaBadgeClasses(c)}`}>
+                                {getCourseAreaName(c)}
+                              </span>
+                              {hasConflict && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 font-bold flex items-center gap-1">
+                                  <AlertTriangle className="w-2.5 h-2.5" /> Choque Horario
+                                </span>
+                              )}
+                            </div>
+
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-1">
+                              {c.description}
+                            </p>
+
+                            <div className="flex flex-wrap items-center gap-3 text-[10px] text-slate-500 dark:text-slate-400 pt-0.5">
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3 text-indigo-500" />
+                                {c.schedules && c.schedules.length > 0
+                                  ? c.schedules.map(s => `${s.dayOfWeek} ${s.startTime}-${s.endTime}`).join(', ')
+                                  : 'Horario flexible'}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Building className="w-3 h-3 text-sky-500" />
+                                {c.schedules && c.schedules[0]?.classroomName ? c.schedules[0].classroomName : 'Aula por definir'}
+                              </span>
+                              <span>
+                                {isAssignedToThisTeacher ? (
+                                  <span className="text-blue-600 dark:text-blue-400 font-bold">
+                                    ✓ Asignado actualmente a este profesor
+                                  </span>
+                                ) : isAssignedToOther ? (
+                                  <span className="text-amber-600 dark:text-amber-400 font-semibold">
+                                    Prof. actual: {c.teacherName} (Reasignar a {selectedTeacher.name.split(' ')[0]})
+                                  </span>
+                                ) : (
+                                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                                    ✓ Disponible (Sin asignar)
+                                  </span>
+                                )}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="pt-1">
+                            <input
+                              type="radio"
+                              name="selectedCourse"
+                              checked={isSelected}
+                              onChange={() => setSelectedCourseToAssign(c.id)}
+                              className="w-4 h-4 text-blue-600 border-slate-300 focus:ring-blue-500"
+                            />
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* Fallback Dropdown Selector */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Seleccionar Curso del Catálogo ({otherCourses.length} disponibles)
+                  O selecciona directamente en la lista desplegable:
                 </label>
                 <select
                   value={selectedCourseToAssign}
                   onChange={e => setSelectedCourseToAssign(e.target.value)}
-                  required
-                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold cursor-pointer"
                 >
                   <option value="">-- Seleccionar Curso --</option>
-                  {otherCourses.map(c => {
-                    const hasConflictWithTch = checkTeacherScheduleConflict(c, teacherAssignedCourses).hasConflict;
-                    return (
+                  <optgroup label="Área Comercial (12$ Semanal)">
+                    {allAssignCandidates.filter(c => courseMatchesAreaFilter(c, 'COMERCIAL')).map(c => (
                       <option key={c.id} value={c.id}>
-                        {hasConflictWithTch ? '⚠️ [Choque de Horario] ' : ''}{c.code} - {c.name} ({c.schedules.map(s => `${s.dayOfWeek} ${s.startTime}-${s.endTime}`).join(', ')})
+                        {c.code} - {c.name} {c.teacherName && c.teacherName !== 'Sin asignar' ? `(Prof: ${c.teacherName})` : '(Disponible)'}
                       </option>
-                    );
-                  })}
+                    ))}
+                  </optgroup>
+                  <optgroup label="Área Industrial (12$ Semanal)">
+                    {allAssignCandidates.filter(c => courseMatchesAreaFilter(c, 'INDUSTRIAL')).map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.code} - {c.name} {c.teacherName && c.teacherName !== 'Sin asignar' ? `(Prof: ${c.teacherName})` : '(Disponible)'}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Área Gerencial (12$ Semanal)">
+                    {allAssignCandidates.filter(c => courseMatchesAreaFilter(c, 'GERENCIAL')).map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.code} - {c.name} {c.teacherName && c.teacherName !== 'Sin asignar' ? `(Prof: ${c.teacherName})` : '(Disponible)'}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Área Artesanal (10$ Semanal)">
+                    {allAssignCandidates.filter(c => courseMatchesAreaFilter(c, 'ARTESANAL')).map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.code} - {c.name} {c.teacherName && c.teacherName !== 'Sin asignar' ? `(Prof: ${c.teacherName})` : '(Disponible)'}
+                      </option>
+                    ))}
+                  </optgroup>
                 </select>
               </div>
 
               {selectedCourseToAssign && selectedCandidateCourse && (
                 <div className="space-y-2">
                   <div className="p-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs space-y-1">
-                    <p className="font-bold text-slate-900 dark:text-white">Detalles del Curso a Asignar:</p>
-                    <div className="text-[11px] text-slate-600 dark:text-slate-300 space-y-0.5">
+                    <p className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500" /> Curso Seleccionado: {selectedCandidateCourse.code} — {selectedCandidateCourse.name}
+                    </p>
+                    <div className="text-[11px] text-slate-600 dark:text-slate-300 space-y-0.5 pl-5">
                       <p>• <strong>Horario:</strong> {selectedCandidateCourse.schedules.map(s => `${s.dayOfWeek} ${s.startTime}-${s.endTime}`).join(', ')}</p>
                       <p>• <strong>Aula:</strong> {selectedCandidateCourse.schedules.map(s => s.classroomName).join(', ')}</p>
                       <p>• <strong>Matriculados:</strong> {selectedCandidateCourse.enrolledCount} / {selectedCandidateCourse.capacity} alumnos</p>
@@ -1102,6 +1299,8 @@ export const TeacherManagement: React.FC = () => {
                   onClick={() => {
                     setIsAssignCourseModalOpen(false);
                     setSelectedCourseToAssign('');
+                    setAssignSearchTerm('');
+                    setAssignCategoryFilter('all');
                   }}
                   className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl cursor-pointer"
                 >

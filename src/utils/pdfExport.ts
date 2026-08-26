@@ -1,6 +1,31 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { User, Course, GradeItem, Classroom, Enrollment, SystemAnalytics } from '../types';
+import { User, Course, GradeItem, Classroom, Enrollment, SystemAnalytics, InstitutionalAuthoritySettings } from '../types';
+import { INITIAL_AUTHORITY_SETTINGS } from '../data/initialData';
+import { formatDecimal, formatGrade } from './gradeHelpers';
+
+export interface SignatoryBlockData {
+  name: string;
+  title: string;
+  department?: string;
+  cedula?: string;
+}
+
+/**
+ * Retrieves the currently active institutional authority settings from local storage or initial defaults
+ */
+export function getSavedAuthoritySettings(): InstitutionalAuthoritySettings {
+  try {
+    const saved = localStorage.getItem('sga_authority_settings_v8');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return { ...INITIAL_AUTHORITY_SETTINGS, ...parsed };
+    }
+  } catch (e) {
+    // fallback to initial
+  }
+  return INITIAL_AUTHORITY_SETTINGS;
+}
 
 // ==========================================
 // INSTITUTIONAL CONSTANTS & PALETTE
@@ -200,10 +225,19 @@ function drawInstitutionalFooter(doc: jsPDF, pageNumber: number, totalPages: num
 }
 
 /**
- * Draws official signature blocks and circular security stamp
+ * Draws official signature blocks (left and right) for official documents.
+ * NOTE: The digital circular stamp has been completely removed because physical stamps
+ * are placed manually with wet ink after printing.
  */
-function drawOfficialSignatures(doc: jsPDF, startY: number, title1 = 'Secretaría General y Registro', title2 = 'Dirección Académica y Decanato') {
+function drawOfficialSignatures(
+  doc: jsPDF,
+  startY: number,
+  signatory1?: string | SignatoryBlockData,
+  signatory2?: string | SignatoryBlockData,
+  customAuthoritySettings?: InstitutionalAuthoritySettings
+) {
   const pageWidth = doc.internal.pageSize.getWidth();
+  const auth = customAuthoritySettings || getSavedAuthoritySettings();
 
   // Signature lines
   const lineY = startY + 18;
@@ -211,56 +245,76 @@ function drawOfficialSignatures(doc: jsPDF, startY: number, title1 = 'Secretarí
   const rightX = pageWidth - 90;
   const lineWidth = 64;
 
-  // Signatory 1
+  // Resolve Signatory 1
+  let s1Name = auth.controlEstudiosName || 'LCDA. VALENTINA SÁNCHEZ M.';
+  let s1Title = 'Secretaría General y Control de Estudios';
+  let s1Dept = auth.institutionName || 'Academia Valencia';
+  let s1Cedula: string | undefined = undefined;
+
+  if (typeof signatory1 === 'string') {
+    s1Title = signatory1;
+  } else if (signatory1 && typeof signatory1 === 'object') {
+    s1Name = signatory1.name;
+    s1Title = signatory1.title;
+    s1Dept = signatory1.department || (auth.institutionName || 'Academia Valencia');
+    s1Cedula = signatory1.cedula;
+  }
+
+  // Resolve Signatory 2 (Director / Coordinador / Encargado)
+  let s2Name = auth.directorName ? auth.directorName.toUpperCase() : 'LAURA COROMOTO GARCÍAS DE RODRÍGUEZ';
+  let s2Title = auth.directorTitle || 'Directora General / Coordinación Académica';
+  let s2Dept = auth.institutionDepartment || (auth.institutionName ? `Consejo Directivo • ${auth.institutionName}` : 'Consejo Directivo • Academia Valencia');
+  let s2Cedula = auth.directorCedula ? `C.I. ${auth.directorCedula}` : undefined;
+
+  if (typeof signatory2 === 'string') {
+    s2Title = signatory2;
+  } else if (signatory2 && typeof signatory2 === 'object') {
+    s2Name = signatory2.name;
+    s2Title = signatory2.title;
+    s2Dept = signatory2.department || (auth.institutionDepartment || 'Consejo Directivo');
+    s2Cedula = signatory2.cedula;
+  }
+
+  // Draw Signatory 1 (Left)
   doc.setDrawColor(...BRAND_COLORS.textMuted);
   doc.setLineWidth(0.4);
   doc.line(leftX, lineY, leftX + lineWidth, lineY);
 
-  doc.setFontSize(8);
+  doc.setFontSize(7.5);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(...BRAND_COLORS.textDark);
-  doc.text('LCDA. VALENTINA SÁNCHEZ M.', leftX + lineWidth / 2, lineY + 5, { align: 'center' });
+  doc.text(s1Name.toUpperCase(), leftX + lineWidth / 2, lineY + 5, { align: 'center' });
 
-  doc.setFontSize(7);
+  doc.setFontSize(6.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...BRAND_COLORS.textMuted);
-  doc.text(title1, leftX + lineWidth / 2, lineY + 9, { align: 'center' });
-  doc.text('Control de Estudios • Academia Valencia', leftX + lineWidth / 2, lineY + 12.5, { align: 'center' });
+  let nextY1 = lineY + 8.5;
+  if (s1Cedula) {
+    doc.text(s1Cedula, leftX + lineWidth / 2, nextY1, { align: 'center' });
+    nextY1 += 3.5;
+  }
+  doc.text(s1Title, leftX + lineWidth / 2, nextY1, { align: 'center' });
+  doc.text(s1Dept, leftX + lineWidth / 2, nextY1 + 3.5, { align: 'center' });
 
-  // Signatory 2
+  // Draw Signatory 2 (Right)
   doc.setDrawColor(...BRAND_COLORS.textMuted);
   doc.line(rightX, lineY, rightX + lineWidth, lineY);
 
-  doc.setFontSize(8);
+  doc.setFontSize(7.5);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(...BRAND_COLORS.textDark);
-  doc.text('DR. CARLOS E. MENDOZA R.', rightX + lineWidth / 2, lineY + 5, { align: 'center' });
+  doc.text(s2Name.toUpperCase(), rightX + lineWidth / 2, lineY + 5, { align: 'center' });
 
-  doc.setFontSize(7);
+  doc.setFontSize(6.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...BRAND_COLORS.textMuted);
-  doc.text(title2, rightX + lineWidth / 2, lineY + 9, { align: 'center' });
-  doc.text('Consejo Directivo • Academia Valencia', rightX + lineWidth / 2, lineY + 12.5, { align: 'center' });
-
-  // Official Circular Stamp (Center)
-  const stampCenterX = pageWidth / 2;
-  const stampCenterY = lineY + 4;
-
-  doc.setDrawColor(30, 58, 138);
-  doc.setLineWidth(0.6);
-  doc.circle(stampCenterX, stampCenterY, 14, 'S');
-  doc.setLineWidth(0.2);
-  doc.circle(stampCenterX, stampCenterY, 12, 'S');
-
-  doc.setFontSize(4.5);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(30, 58, 138);
-  doc.text('ACADEMIA VALENCIA • CONTROL ESTUDIOS', stampCenterX, stampCenterY - 6, { align: 'center' });
-  doc.setFontSize(6);
-  doc.text('OFICIALIZADO', stampCenterX, stampCenterY, { align: 'center' });
-  doc.setFontSize(4.5);
-  doc.text('SEDE PRINCIPAL VALENCIA', stampCenterX, stampCenterY + 5, { align: 'center' });
-  doc.text('REGISTRADO', stampCenterX, stampCenterY + 8, { align: 'center' });
+  let nextY2 = lineY + 8.5;
+  if (s2Cedula) {
+    doc.text(s2Cedula, rightX + lineWidth / 2, nextY2, { align: 'center' });
+    nextY2 += 3.5;
+  }
+  doc.text(s2Title, rightX + lineWidth / 2, nextY2, { align: 'center' });
+  doc.text(s2Dept, rightX + lineWidth / 2, nextY2 + 3.5, { align: 'center' });
 }
 
 // ==========================================
@@ -318,19 +372,19 @@ export function generateStudentTranscriptPDF(student: User, grades: GradeItem[])
   const approvedCount = grades.filter(g => g.finalGrade >= 10 || g.status === 'Aprobado').length;
   const failedCount = grades.filter(g => g.finalGrade < 10 && g.finalGrade > 0).length;
   const gpa = totalCourses > 0 
-    ? (grades.reduce((acc, g) => acc + g.finalGrade, 0) / totalCourses).toFixed(1)
-    : '0.0';
+    ? formatDecimal(grades.reduce((acc, g) => acc + g.finalGrade, 0) / totalCourses, 1, false)
+    : '0,0';
 
   // Table Data (4 Evaluaciones 25% c/u en escala 1-20)
   const tableRows = grades.map(g => [
     g.courseCode,
     g.courseName,
-    (g.evaluacion1 ?? g.parcial1 ?? 0).toString(),
-    (g.evaluacion2 ?? g.parcial2 ?? 0).toString(),
-    (g.evaluacion3 ?? g.practicas ?? 0).toString(),
-    (g.evaluacion4 ?? g.examenFinal ?? 0).toString(),
+    formatGrade(g.evaluacion1 ?? g.parcial1 ?? 0),
+    formatGrade(g.evaluacion2 ?? g.parcial2 ?? 0),
+    formatGrade(g.evaluacion3 ?? g.practicas ?? 0),
+    formatGrade(g.evaluacion4 ?? g.examenFinal ?? 0),
     `${g.asistencia}%`,
-    g.finalGrade.toFixed(1),
+    formatGrade(g.finalGrade),
     g.finalGrade >= 10 ? 'Aprobado' : (g.finalGrade > 0 ? 'Reprobado' : 'En Cursado')
   ]);
 
@@ -419,14 +473,19 @@ export function generateStudentTranscriptPDF(student: User, grades: GradeItem[])
 // ==========================================
 // 2. ACTA OFICIAL DE NOTAS POR CURSO (DOCENTE / ADMIN)
 // ==========================================
-export function generateCourseGradeActPDF(course: Course, grades: GradeItem[]) {
+export function generateCourseGradeActPDF(
+  course: Course,
+  grades: GradeItem[],
+  customAuthoritySettings?: InstitutionalAuthoritySettings
+) {
   const doc = new jsPDF();
   const folioCode = `ACT-${course.code}-${course.term}`;
+  const auth = customAuthoritySettings || getSavedAuthoritySettings();
 
   // Header
   drawInstitutionalHeader(
     doc,
-    'Acta Oficial de Calificaciones Finales y Asistencia',
+    'Acta Oficial de Calificaciones Finales',
     `Área / Dpto: ${course.department} • Período: ${course.term} • Modalidad: ${course.modality}`,
     folioCode
   );
@@ -461,19 +520,29 @@ export function generateCourseGradeActPDF(course: Course, grades: GradeItem[]) {
   doc.text(`${grades.length} Estudiantes`, 155, 74);
   doc.text(course.duracion || (course.horasAcademicas ? `${course.horasAcademicas} Horas Académicas` : '40 Horas Académicas'), 155, 80);
 
-  // Table Data (4 Evaluaciones 25% c/u en escala 1-20)
-  const tableRows = grades.map((g, idx) => [
-    (idx + 1).toString(),
-    g.studentCode,
-    g.studentName,
-    (g.evaluacion1 ?? g.parcial1 ?? 0).toString(),
-    (g.evaluacion2 ?? g.parcial2 ?? 0).toString(),
-    (g.evaluacion3 ?? g.practicas ?? 0).toString(),
-    (g.evaluacion4 ?? g.examenFinal ?? 0).toString(),
-    `${g.asistencia}%`,
-    g.finalGrade.toFixed(1),
-    g.finalGrade >= 10 ? 'Aprobado' : (g.finalGrade > 0 ? 'Reprobado' : 'En Cursado')
-  ]);
+  // Table Data (4 Evaluaciones 25% c/u en escala 1-20 + Acumulado + Final)
+  const tableRows = grades.map((g, idx) => {
+    const e1 = g.evaluacion1 ?? g.parcial1 ?? 0;
+    const e2 = g.evaluacion2 ?? g.parcial2 ?? 0;
+    const e3 = g.evaluacion3 ?? g.practicas ?? 0;
+    const e4 = g.evaluacion4 ?? g.examenFinal ?? 0;
+    const rawSum = (e1 * 0.25) + (e2 * 0.25) + (e3 * 0.25) + (e4 * 0.25);
+    const roundedFinal = Math.round(rawSum);
+    const finalGradeVal = g.finalGrade !== undefined && g.finalGrade !== null ? g.finalGrade : roundedFinal;
+
+    return [
+      (idx + 1).toString(),
+      g.studentCode,
+      g.studentName,
+      formatGrade(e1),
+      formatGrade(e2),
+      formatGrade(e3),
+      formatGrade(e4),
+      formatDecimal(rawSum, 1),
+      formatGrade(finalGradeVal),
+      finalGradeVal >= 10 ? 'Aprobado' : (finalGradeVal > 0 ? 'Reprobado' : 'En Cursado')
+    ];
+  });
 
   autoTable(doc, {
     startY: 90,
@@ -485,7 +554,7 @@ export function generateCourseGradeActPDF(course: Course, grades: GradeItem[]) {
       'EV 2 (25%)',
       'EV 3 (25%)',
       'EV 4 (25%)',
-      'ASIST.',
+      'ACUM.',
       'FINAL (1-20)',
       'ESTADO'
     ]],
@@ -510,11 +579,11 @@ export function generateCourseGradeActPDF(course: Course, grades: GradeItem[]) {
       2: { cellWidth: 55 },
       3: { cellWidth: 13, halign: 'center' },
       4: { cellWidth: 13, halign: 'center' },
-      5: { cellWidth: 15, halign: 'center' },
-      6: { cellWidth: 16, halign: 'center' },
-      7: { cellWidth: 13, halign: 'center' },
-      8: { cellWidth: 14, halign: 'center', fontStyle: 'bold' },
-      9: { cellWidth: 17, halign: 'center', fontStyle: 'bold' }
+      5: { cellWidth: 13, halign: 'center' },
+      6: { cellWidth: 13, halign: 'center' },
+      7: { cellWidth: 15, halign: 'center', fontStyle: 'bold' },
+      8: { cellWidth: 16, halign: 'center', fontStyle: 'bold' },
+      9: { cellWidth: 18, halign: 'center', fontStyle: 'bold' }
     },
     alternateRowStyles: {
       fillColor: [248, 250, 252]
@@ -523,12 +592,24 @@ export function generateCourseGradeActPDF(course: Course, grades: GradeItem[]) {
 
   const finalY = (doc as any).lastAutoTable.finalY || 160;
 
-  // Signatures
+  // Signatures:
+  // Signatory 1 (Left): ONLY the teacher who teaches the course
+  // Signatory 2 (Right): The configured Director / Coordinador / Encargado
   drawOfficialSignatures(
     doc,
     finalY + 12,
-    `Firma Docente: ${course.teacherName}`,
-    'Dirección Académica y Decanato'
+    {
+      name: `PROF. ${course.teacherName.toUpperCase()}`,
+      title: 'Docente Titular / Facilitador',
+      department: `${course.name} (${course.code})`
+    },
+    {
+      name: auth.directorName.toUpperCase(),
+      title: auth.directorTitle,
+      department: auth.institutionDepartment || auth.institutionName || 'Consejo Directivo',
+      cedula: auth.directorCedula ? `C.I. ${auth.directorCedula}` : undefined
+    },
+    auth
   );
 
   // Footer
@@ -805,8 +886,8 @@ export function generateGlobalGradesReportPDF(grades: GradeItem[], term = '2026-
   const approved = grades.filter(g => g.status === 'Aprobado').length;
   const failed = grades.filter(g => g.status === 'Reprobado').length;
   const recovery = grades.filter(g => g.status === 'Recuperación').length;
-  const avg = total > 0 ? (grades.reduce((acc, g) => acc + g.finalGrade, 0) / total).toFixed(1) : '0.0';
-  const approvalRate = total > 0 ? ((approved / total) * 100).toFixed(1) : '0';
+  const avg = total > 0 ? formatDecimal(grades.reduce((acc, g) => acc + g.finalGrade, 0) / total, 1, false) : '0,0';
+  const approvalRate = total > 0 ? formatDecimal((approved / total) * 100, 1, false) : '0';
 
   const pageWidth = doc.internal.pageSize.getWidth();
 
@@ -836,12 +917,12 @@ export function generateGlobalGradesReportPDF(grades: GradeItem[], term = '2026-
     g.studentName,
     g.courseCode,
     g.courseName,
-    (g.evaluacion1 ?? g.parcial1 ?? 0).toString(),
-    (g.evaluacion2 ?? g.parcial2 ?? 0).toString(),
-    (g.evaluacion3 ?? g.practicas ?? 0).toString(),
-    (g.evaluacion4 ?? g.examenFinal ?? 0).toString(),
+    formatGrade(g.evaluacion1 ?? g.parcial1 ?? 0),
+    formatGrade(g.evaluacion2 ?? g.parcial2 ?? 0),
+    formatGrade(g.evaluacion3 ?? g.practicas ?? 0),
+    formatGrade(g.evaluacion4 ?? g.examenFinal ?? 0),
     `${g.asistencia}%`,
-    g.finalGrade.toFixed(1),
+    formatGrade(g.finalGrade),
     g.status
   ]);
 

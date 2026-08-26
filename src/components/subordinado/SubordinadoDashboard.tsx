@@ -24,6 +24,12 @@ import {
   generateGlobalGradesReportPDF,
   generateAnalyticsReportPDF
 } from '../../utils/pdfExport';
+import {
+  getCourseAreaName,
+  getCourseAreaBadgeClasses,
+  courseMatchesAreaFilter
+} from '../../utils/areaHelpers';
+import { formatDecimal, formatGrade } from '../../utils/gradeHelpers';
 
 interface SubordinadoDashboardProps {
   activeTab: string;
@@ -53,15 +59,24 @@ export const SubordinadoDashboard: React.FC<SubordinadoDashboardProps> = ({ acti
     (s.career && s.career.toLowerCase().includes(studentSearch.toLowerCase()))
   );
 
-  const departments = Array.from(new Set(courses.map(c => c.department)));
   const filteredCourses = courses.filter(c => {
     const matchesSearch =
       c.name.toLowerCase().includes(courseSearch.toLowerCase()) ||
       c.code.toLowerCase().includes(courseSearch.toLowerCase()) ||
+      (c.specialty && c.specialty.toLowerCase().includes(courseSearch.toLowerCase())) ||
+      (c.department && c.department.toLowerCase().includes(courseSearch.toLowerCase())) ||
       c.teacherName.toLowerCase().includes(courseSearch.toLowerCase());
-    const matchesDept = selectedDeptFilter === 'all' || c.department === selectedDeptFilter;
+    const matchesDept = courseMatchesAreaFilter(c, selectedDeptFilter);
     return matchesSearch && matchesDept;
   });
+
+  const areaFilterOptions = [
+    { key: 'all', label: `Todas las Áreas (${courses.length})` },
+    { key: 'COMERCIAL', label: `Área Comercial (${courses.filter(c => courseMatchesAreaFilter(c, 'COMERCIAL')).length})` },
+    { key: 'INDUSTRIAL', label: `Área Industrial (${courses.filter(c => courseMatchesAreaFilter(c, 'INDUSTRIAL')).length})` },
+    { key: 'GERENCIAL', label: `Área Gerencial (${courses.filter(c => courseMatchesAreaFilter(c, 'GERENCIAL')).length})` },
+    { key: 'ARTESANAL', label: `Área Artesanal (${courses.filter(c => courseMatchesAreaFilter(c, 'ARTESANAL')).length})` }
+  ];
 
   // Selected course details for grade viewing
   const currentReportCourse = courses.find(c => c.id === selectedCourseForReport) || courses[0];
@@ -306,7 +321,7 @@ export const SubordinadoDashboard: React.FC<SubordinadoDashboardProps> = ({ acti
               const isSelected = student.id === selectedStudentId;
               const studentGradesList = grades.filter(g => g.studentId === student.id);
               const avg = studentGradesList.length > 0
-                ? (studentGradesList.reduce((acc, curr) => acc + curr.finalGrade, 0) / studentGradesList.length).toFixed(1)
+                ? formatDecimal(studentGradesList.reduce((acc, curr) => acc + curr.finalGrade, 0) / studentGradesList.length, 1, false)
                 : 'N/A';
 
               return (
@@ -395,11 +410,11 @@ export const SubordinadoDashboard: React.FC<SubordinadoDashboardProps> = ({ acti
                               <span className="font-mono text-indigo-600 font-bold block">{g.courseCode}</span>
                               {g.courseName}
                             </td>
-                            <td className="p-3 text-center text-slate-600 dark:text-slate-400">
-                              P1: {g.parcial1} | P2: {g.parcial2}
+                            <td className="p-3 text-center text-slate-600 dark:text-slate-400 font-mono">
+                              Ev1: {formatGrade(g.evaluacion1 ?? g.parcial1)} | Ev2: {formatGrade(g.evaluacion2 ?? g.parcial2)} | Ev3: {formatGrade(g.evaluacion3 ?? g.practicas)}
                             </td>
-                            <td className="p-3 text-center text-slate-600 dark:text-slate-400 font-medium">
-                              {g.examenFinal} pts
+                            <td className="p-3 text-center text-slate-600 dark:text-slate-400 font-medium font-mono">
+                              {formatGrade(g.evaluacion4 ?? g.examenFinal)} pts
                             </td>
                             <td className="p-3 text-center font-black text-indigo-600 dark:text-indigo-400 text-sm">
                               {g.finalGrade}
@@ -449,7 +464,7 @@ export const SubordinadoDashboard: React.FC<SubordinadoDashboardProps> = ({ acti
             </p>
           </div>
 
-          <div className="flex gap-2 w-full sm:w-auto">
+          <div className="flex flex-wrap gap-2 w-full sm:w-auto">
             <input
               type="text"
               placeholder="Filtrar curso o profesor..."
@@ -457,6 +472,15 @@ export const SubordinadoDashboard: React.FC<SubordinadoDashboardProps> = ({ acti
               onChange={e => setCourseSearch(e.target.value)}
               className="px-3 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
             />
+            <select
+              value={selectedDeptFilter}
+              onChange={e => setSelectedDeptFilter(e.target.value)}
+              className="px-3 py-1.5 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none cursor-pointer"
+            >
+              {areaFilterOptions.map(opt => (
+                <option key={opt.key} value={opt.key}>{opt.label}</option>
+              ))}
+            </select>
           </div>
         </div>
 
@@ -466,6 +490,7 @@ export const SubordinadoDashboard: React.FC<SubordinadoDashboardProps> = ({ acti
               <tr>
                 <th className="p-3">Código</th>
                 <th className="p-3">Nombre del Curso</th>
+                <th className="p-3 text-center">Área Académica</th>
                 <th className="p-3">Docente Titular</th>
                 <th className="p-3">Modalidad</th>
                 <th className="p-3 text-center">Inscritos / Capacidad</th>
@@ -479,7 +504,17 @@ export const SubordinadoDashboard: React.FC<SubordinadoDashboardProps> = ({ acti
                 return (
                   <tr key={course.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
                     <td className="p-3 font-mono font-bold text-indigo-600">{course.code}</td>
-                    <td className="p-3 font-semibold text-slate-900 dark:text-slate-100">{course.name}</td>
+                    <td className="p-3">
+                      <span className="font-semibold text-slate-900 dark:text-slate-100 block">{course.name}</span>
+                      {course.specialty && (
+                        <span className="text-[10px] text-slate-500">{course.specialty}</span>
+                      )}
+                    </td>
+                    <td className="p-3 text-center whitespace-nowrap">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] ${getCourseAreaBadgeClasses(course)}`}>
+                        {getCourseAreaName(course)}
+                      </span>
+                    </td>
                     <td className="p-3 text-slate-600 dark:text-slate-300">{course.teacherName}</td>
                     <td className="p-3">
                       <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[10px] font-bold">

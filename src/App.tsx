@@ -11,6 +11,7 @@ import { ClassroomScheduleMap } from './components/classroom/ClassroomScheduleMa
 import { AcademicAiAssistant } from './components/ai/AcademicAiAssistant';
 import { AcademicActivitiesManager } from './components/admin/AcademicActivitiesManager';
 import { RolePermissionsManager } from './components/admin/RolePermissionsManager';
+import { AuthoritySettingsManager } from './components/admin/AuthoritySettingsManager';
 import { UserManagement } from './components/admin/UserManagement';
 import { AcademicOfferPlanner } from './components/admin/AcademicOfferPlanner';
 import { StudentManagement } from './components/admin/StudentManagement';
@@ -54,6 +55,9 @@ function MainAppContent() {
       } else if (hash === 'permisos') {
         if (isAuthenticated) setCurrentView('system_portal');
         setActiveTab('permissions');
+      } else if (hash === 'firmas' || hash === 'autoridades' || hash === 'authorities') {
+        if (isAuthenticated) setCurrentView('system_portal');
+        setActiveTab('authorities');
       } else if (hash === 'aulas') {
         if (isAuthenticated) setCurrentView('system_portal');
         setActiveTab('classrooms');
@@ -107,6 +111,10 @@ function MainAppContent() {
 
     if (activeTab === 'permissions') {
       return <RolePermissionsManager />;
+    }
+
+    if (activeTab === 'authorities') {
+      return <AuthoritySettingsManager />;
     }
 
     switch (currentUser.role) {

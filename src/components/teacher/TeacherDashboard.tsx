@@ -36,6 +36,13 @@ import {
 import { useApp } from '../../context/AppContext';
 import { Course, GradeItem, User, Classroom } from '../../types';
 import { generateTeacherWorkloadPDF, generateCourseGradeActPDF } from '../../utils/pdfExport';
+import {
+  computeFinalGrade,
+  parseGradeInput,
+  formatDecimal,
+  formatGrade,
+  roundGrade
+} from '../../utils/gradeHelpers';
 
 interface TeacherDashboardProps {
   activeTab?: string;
@@ -54,7 +61,8 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     updateGrade,
     sendBroadcastNotification,
     getTeacherCourses,
-    activeTerm
+    activeTerm,
+    authoritySettings
   } = useApp();
 
   const teacherCourses = getTeacherCourses(currentUser.id);
@@ -115,10 +123,13 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     const existing = editingGrades[gradeId] || courseGrades.find(g => g.id === gradeId);
     if (!existing) return;
 
-    let numVal = typeof value === 'number' ? value : Number(value);
-    if (field !== 'asistencia' && (field.toString().startsWith('evaluacion') || field === 'parcial1' || field === 'parcial2' || field === 'practicas' || field === 'examenFinal')) {
-      if (numVal < 0) numVal = 0;
-      if (numVal > 20) numVal = 20;
+    let numVal: number;
+    if (field === 'asistencia') {
+      numVal = Math.min(100, Math.max(0, parseGradeInput(value)));
+    } else if (field.toString().startsWith('evaluacion') || field === 'parcial1' || field === 'parcial2' || field === 'practicas' || field === 'examenFinal') {
+      numVal = parseGradeInput(value);
+    } else {
+      numVal = value;
     }
 
     const updated = { ...existing, [field]: numVal };
@@ -141,16 +152,15 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       updated.examenFinal = numVal;
     }
 
-    const e1 = Number(updated.evaluacion1 ?? updated.parcial1) || 0;
-    const e2 = Number(updated.evaluacion2 ?? updated.parcial2) || 0;
-    const e3 = Number(updated.evaluacion3 ?? updated.practicas) || 0;
-    const e4 = Number(updated.evaluacion4 ?? updated.examenFinal) || 0;
+    const e1 = parseGradeInput(updated.evaluacion1 ?? updated.parcial1);
+    const e2 = parseGradeInput(updated.evaluacion2 ?? updated.parcial2);
+    const e3 = parseGradeInput(updated.evaluacion3 ?? updated.practicas);
+    const e4 = parseGradeInput(updated.evaluacion4 ?? updated.examenFinal);
 
-    const computedFinal = Number(((e1 + e2 + e3 + e4) / 4).toFixed(1));
+    // Official 0.5 rounding rule (>= 0,5 rounds up to next integer, < 0,5 leaves whole integer)
+    const { finalGrade: computedFinal, status: computedStatus } = computeFinalGrade(e1, e2, e3, e4);
     updated.finalGrade = computedFinal;
-    if (e1 > 0 || e2 > 0 || e3 > 0 || e4 > 0) {
-      updated.status = computedFinal >= 10 ? 'Aprobado' : 'Reprobado';
-    }
+    updated.status = computedStatus;
 
     setEditingGrades(prev => ({ ...prev, [gradeId]: updated }));
   };
@@ -212,8 +222,8 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const totalEnrolled = courseGrades.length;
   const approvedCount = courseGrades.filter(g => g.finalGrade >= 10 || g.status === 'Aprobado').length;
   const averageGrade = totalEnrolled > 0
-    ? (courseGrades.reduce((sum, g) => sum + g.finalGrade, 0) / totalEnrolled).toFixed(1)
-    : '0.0';
+    ? formatDecimal(courseGrades.reduce((sum, g) => sum + g.finalGrade, 0) / totalEnrolled, 1, false)
+    : '0,0';
   const averageAttendance = totalEnrolled > 0
     ? Math.round(courseGrades.reduce((sum, g) => sum + g.asistencia, 0) / totalEnrolled)
     : 0;
@@ -763,6 +773,15 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => generateCourseGradeActPDF(selectedCourse, grades.filter(g => g.courseId === selectedCourse.id), authoritySettings)}
+                  className="inline-flex items-center gap-1.5 bg-[#FF6600] hover:bg-orange-600 text-white font-bold px-3.5 py-2 rounded-xl text-xs shadow-sm transition-all cursor-pointer"
+                  title="Descargar Acta Oficial de Calificaciones en PDF con firmas institucionales"
+                >
+                  <FileText className="w-4 h-4" /> Acta Oficial (PDF)
+                </button>
+
                 {Object.keys(editingGrades).length > 0 && (
                   <button
                     type="button"
@@ -772,20 +791,11 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                     <Save className="w-4 h-4" /> Guardar Todo ({Object.keys(editingGrades).length})
                   </button>
                 )}
-
-                <button
-                  type="button"
-                  onClick={() => handleSetAllAttendance(100)}
-                  className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold px-3 py-2 rounded-xl text-xs transition-all cursor-pointer"
-                  title="Poner 100% de asistencia a todos los alumnos del curso"
-                >
-                  <UserCheck className="w-4 h-4 text-emerald-600" /> 100% Asistencia
-                </button>
               </div>
             </div>
 
             {/* Quick Metrics of Course */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="bg-slate-50 dark:bg-slate-800/50 p-3.5 rounded-xl border border-slate-100 dark:border-slate-800">
                 <div className="text-[11px] font-semibold text-slate-500 flex items-center gap-1">
                   <Users className="w-3.5 h-3.5 text-blue-600" /> Alumnos Matriculados
@@ -801,15 +811,6 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 </div>
                 <div className="text-xl font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
                   {averageGrade} <span className="text-xs font-normal text-slate-400">pts</span>
-                </div>
-              </div>
-
-              <div className="bg-slate-50 dark:bg-slate-800/50 p-3.5 rounded-xl border border-slate-100 dark:border-slate-800">
-                <div className="text-[11px] font-semibold text-slate-500 flex items-center gap-1">
-                  <Percent className="w-3.5 h-3.5 text-blue-600" /> Asistencia Promedio
-                </div>
-                <div className="text-xl font-bold text-blue-600 dark:text-blue-400 mt-0.5">
-                  {averageAttendance}%
                 </div>
               </div>
 
@@ -836,13 +837,15 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   className="w-full pl-9 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-              <div className="text-xs text-slate-600 dark:text-slate-400 bg-sky-50 dark:bg-sky-950/40 px-3 py-1.5 rounded-xl border border-sky-100 dark:border-sky-900/50 flex items-center gap-2">
-                <span className="font-bold text-sky-700 dark:text-sky-300">Escala 1 al 20:</span>
-                <code className="text-sky-800 dark:text-sky-200 font-mono font-bold">4 Evaluaciones (25% c/u) • Mínimo Aprobatorio: 10 pts</code>
+              <div className="text-xs text-slate-600 dark:text-slate-400 bg-sky-50 dark:bg-sky-950/40 px-3.5 py-2 rounded-xl border border-sky-100 dark:border-sky-900/50 flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2.5">
+                <span className="font-bold text-sky-700 dark:text-sky-300 whitespace-nowrap">Escala 1 al 20 (4 Eval 25% c/u):</span>
+                <span className="text-sky-800 dark:text-sky-200 text-[11px]">
+                  Redondeo: decimales <strong>≥ 0,5</strong> suben al entero superior (ej: 15,5 → <strong>16</strong>), decimales <strong>&lt; 0,5</strong> quedan en la parte entera (ej: 15,4 → <strong>15</strong>) • Separador decimal: <strong>Coma (,)</strong>
+                </span>
               </div>
             </div>
 
-            {/* Grades & Attendance Table */}
+            {/* Grades Table */}
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs text-slate-700 dark:text-slate-300">
                 <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 uppercase font-semibold text-[10px]">
@@ -852,7 +855,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                     <th className="px-2 py-3 text-center">Eval 2 (25%)</th>
                     <th className="px-2 py-3 text-center">Eval 3 (25%)</th>
                     <th className="px-2 py-3 text-center">Eval 4 (25%)</th>
-                    <th className="px-3 py-3 text-center">Asistencia %</th>
+                    <th className="px-2 py-3 text-center font-bold text-slate-700 dark:text-slate-300">Acumulado</th>
                     <th className="px-3 py-3 text-center font-bold">Nota Final (1-20)</th>
                     <th className="px-3 py-3 text-center">Estado</th>
                     <th className="px-3 py-3 text-center rounded-r-xl">Acciones</th>
@@ -876,6 +879,12 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                       const e2 = currentGrade.evaluacion2 ?? currentGrade.parcial2 ?? 0;
                       const e3 = currentGrade.evaluacion3 ?? currentGrade.practicas ?? 0;
                       const e4 = currentGrade.evaluacion4 ?? currentGrade.examenFinal ?? 0;
+                      const numE1 = parseGradeInput(e1);
+                      const numE2 = parseGradeInput(e2);
+                      const numE3 = parseGradeInput(e3);
+                      const numE4 = parseGradeInput(e4);
+                      const rawAverage = (numE1 + numE2 + numE3 + numE4) / 4;
+                      const hasEvaluations = numE1 > 0 || numE2 > 0 || numE3 > 0 || numE4 > 0;
 
                       return (
                         <tr key={grade.id} className={isDirty ? 'bg-amber-50/50 dark:bg-amber-950/20' : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/40'}>
@@ -887,12 +896,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                           {/* Evaluación 1 */}
                           <td className="px-2 py-3 text-center">
                             <input
-                              type="number"
-                              min="0"
-                              max="20"
-                              step="0.5"
-                              value={e1}
-                              onChange={e => handleGradeChange(grade.id, 'evaluacion1', Number(e.target.value))}
+                              type="text"
+                              inputMode="decimal"
+                              value={formatGrade(e1)}
+                              onChange={e => handleGradeChange(grade.id, 'evaluacion1', e.target.value)}
                               className="w-14 text-center font-mono py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-blue-500 text-xs font-semibold"
                               placeholder="0-20"
                             />
@@ -901,12 +908,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                           {/* Evaluación 2 */}
                           <td className="px-2 py-3 text-center">
                             <input
-                              type="number"
-                              min="0"
-                              max="20"
-                              step="0.5"
-                              value={e2}
-                              onChange={e => handleGradeChange(grade.id, 'evaluacion2', Number(e.target.value))}
+                              type="text"
+                              inputMode="decimal"
+                              value={formatGrade(e2)}
+                              onChange={e => handleGradeChange(grade.id, 'evaluacion2', e.target.value)}
                               className="w-14 text-center font-mono py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-blue-500 text-xs font-semibold"
                               placeholder="0-20"
                             />
@@ -915,12 +920,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                           {/* Evaluación 3 */}
                           <td className="px-2 py-3 text-center">
                             <input
-                              type="number"
-                              min="0"
-                              max="20"
-                              step="0.5"
-                              value={e3}
-                              onChange={e => handleGradeChange(grade.id, 'evaluacion3', Number(e.target.value))}
+                              type="text"
+                              inputMode="decimal"
+                              value={formatGrade(e3)}
+                              onChange={e => handleGradeChange(grade.id, 'evaluacion3', e.target.value)}
                               className="w-14 text-center font-mono py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-blue-500 text-xs font-semibold"
                               placeholder="0-20"
                             />
@@ -929,54 +932,24 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                           {/* Evaluación 4 */}
                           <td className="px-2 py-3 text-center">
                             <input
-                              type="number"
-                              min="0"
-                              max="20"
-                              step="0.5"
-                              value={e4}
-                              onChange={e => handleGradeChange(grade.id, 'evaluacion4', Number(e.target.value))}
+                              type="text"
+                              inputMode="decimal"
+                              value={formatGrade(e4)}
+                              onChange={e => handleGradeChange(grade.id, 'evaluacion4', e.target.value)}
                               className="w-14 text-center font-mono py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-blue-500 text-xs font-semibold"
                               placeholder="0-20"
                             />
                           </td>
 
-                          {/* Asistencia con controles rápidos */}
-                          <td className="px-3 py-3 text-center">
-                            <div className="flex items-center justify-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => handleGradeChange(grade.id, 'asistencia', Math.max(0, currentGrade.asistencia - 5))}
-                                className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded text-[10px] font-bold cursor-pointer"
-                                title="Restar 5%"
-                              >
-                                -5
-                              </button>
-                              <input
-                                type="number"
-                                min="0"
-                                max="100"
-                                value={currentGrade.asistencia}
-                                onChange={e => handleGradeChange(grade.id, 'asistencia', Number(e.target.value))}
-                                className="w-14 text-center font-mono py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-blue-500 text-xs font-semibold"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => handleGradeChange(grade.id, 'asistencia', Math.min(100, currentGrade.asistencia + 5))}
-                                className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded text-[10px] font-bold cursor-pointer"
-                                title="Sumar 5%"
-                              >
-                                +5
-                              </button>
-                            </div>
-                            <span className={`inline-block text-[9px] font-bold px-1.5 py-0.5 rounded mt-1 ${
-                              currentGrade.asistencia >= 85
-                                ? 'text-emerald-700 bg-emerald-50 dark:bg-emerald-950/60 dark:text-emerald-300'
-                                : currentGrade.asistencia >= 75
-                                ? 'text-amber-700 bg-amber-50 dark:bg-amber-950/60 dark:text-amber-300'
-                                : 'text-rose-700 bg-rose-50 dark:bg-rose-950/60 dark:text-rose-300'
-                            }`}>
-                              {currentGrade.asistencia >= 75 ? 'Asistencia Regular' : 'Riesgo Inasistencia'}
-                            </span>
+                          {/* Acumulado */}
+                          <td className="px-2 py-3 text-center font-mono font-semibold">
+                            {hasEvaluations ? (
+                              <span className="inline-block bg-slate-100 dark:bg-slate-800/80 text-slate-800 dark:text-slate-200 px-2 py-1 rounded-lg text-xs font-bold border border-slate-200 dark:border-slate-700">
+                                {formatDecimal(rawAverage, 1, false)} <span className="text-[10px] text-slate-400 font-normal">pts</span>
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 text-xs">-</span>
+                            )}
                           </td>
 
                           {/* Computed Final */}

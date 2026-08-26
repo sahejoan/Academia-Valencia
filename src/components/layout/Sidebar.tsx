@@ -15,7 +15,8 @@ import {
   Calendar,
   Layers,
   GraduationCap,
-  Briefcase
+  Briefcase,
+  FileSignature
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
@@ -32,6 +33,7 @@ export type ActiveTab =
   | 'offer_admin'
   | 'course_admin'
   | 'permissions'
+  | 'authorities'
   | 'reports'
   | 'ai_assistant';
 
@@ -96,6 +98,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           { id: 'users_admin' as ActiveTab, label: 'Directorio General', icon: <Users className="w-5 h-5 text-slate-400" /> },
           { id: 'activities' as ActiveTab, label: 'Actividades Extracurriculares', icon: <Calendar className="w-5 h-5" /> },
           { id: 'permissions' as ActiveTab, label: 'Permisos & Roles', icon: <ShieldCheck className="w-5 h-5 text-purple-400" /> },
+          { id: 'authorities' as ActiveTab, label: 'Firmas y Autoridades', icon: <FileSignature className="w-5 h-5 text-amber-400" /> },
           { id: 'classrooms' as ActiveTab, label: 'Disponibilidad de Aulas', icon: <Building2 className="w-5 h-5" />, badge: conflicts.length > 0 ? conflicts.length : undefined },
           { id: 'reports' as ActiveTab, label: 'Centro de Reportes Oficiales (PDF)', icon: <FileText className="w-5 h-5 text-sky-400" /> },
           { id: 'ai_assistant' as ActiveTab, label: 'AVI (Asistente Integrado)', icon: <Bot className="w-5 h-5 text-indigo-400" /> }

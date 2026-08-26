@@ -12,7 +12,8 @@ import {
   AcademicActivity,
   PermissionKey,
   PermissionDefinition,
-  RolePermissionsMap
+  RolePermissionsMap,
+  InstitutionalAuthoritySettings
 } from '../types';
 import {
   INITIAL_USERS,
@@ -23,7 +24,8 @@ import {
   INITIAL_NOTIFICATIONS,
   INITIAL_ACTIVITIES,
   INITIAL_ROLE_PERMISSIONS,
-  PERMISSION_DEFINITIONS
+  PERMISSION_DEFINITIONS,
+  INITIAL_AUTHORITY_SETTINGS
 } from '../data/initialData';
 import {
   detectSystemConflicts,
@@ -31,6 +33,7 @@ import {
   checkTeacherScheduleConflict,
   checkCourseSectionClosed
 } from '../utils/conflictDetector';
+import { computeFinalGrade, parseGradeInput, formatDecimal } from '../utils/gradeHelpers';
 import {
   seedFirestoreIfEmpty,
   subscribeToUsers,
@@ -40,6 +43,7 @@ import {
   subscribeToGrades,
   subscribeToActivities,
   subscribeToNotifications,
+  subscribeToAuthoritySettings,
   syncUserToFirestore,
   deleteUserFromFirestore,
   syncCourseToFirestore,
@@ -52,7 +56,8 @@ import {
   syncNotificationToFirestore,
   syncActivityToFirestore,
   deleteActivityFromFirestore,
-  syncPermissionsToFirestore
+  syncPermissionsToFirestore,
+  syncAuthoritySettingsToFirestore
 } from '../lib/firestoreService';
 
 interface AppContextType {
@@ -124,6 +129,10 @@ interface AppContextType {
   setRolePermissionValue: (role: UserRole, permissionKey: PermissionKey, enabled: boolean) => void;
   resetRolePermissionsToDefault: () => void;
 
+  // Institutional Signatories & Authority Settings
+  authoritySettings: InstitutionalAuthoritySettings;
+  saveAuthoritySettings: (settings: InstitutionalAuthoritySettings) => Promise<{ success: boolean; message: string }>;
+
   // Computed helpers
   conflicts: ScheduleConflict[];
   analytics: SystemAnalytics;
@@ -148,7 +157,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length >= INITIAL_USERS.length) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const userMap = new Map<string, User>();
+          INITIAL_USERS.forEach(u => userMap.set(u.id, u));
+          parsed.forEach((u: User) => {
+            const existing = userMap.get(u.id);
+            userMap.set(u.id, existing ? { ...existing, ...u } : u);
+          });
+          return Array.from(userMap.values());
+        }
       } catch (e) { /* fallback */ }
     }
     return INITIAL_USERS;
@@ -158,6 +175,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const savedId = sessionStorage.getItem('sga_auth_user_id');
     const isAuth = sessionStorage.getItem('sga_is_authenticated');
     if (isAuth === 'true' && savedId) {
+      const savedUsersStr = localStorage.getItem('sga_users_v8');
+      if (savedUsersStr) {
+        try {
+          const parsed = JSON.parse(savedUsersStr);
+          if (Array.isArray(parsed)) {
+            const foundInSaved = parsed.find((u: User) => u.id === savedId);
+            if (foundInSaved) return foundInSaved;
+          }
+        } catch (e) { /* fallback */ }
+      }
       const found = INITIAL_USERS.find(u => u.id === savedId);
       if (found) return found;
     }
@@ -186,8 +213,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length >= 40) {
-          return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const courseMap = new Map<string, Course>();
+          INITIAL_COURSES.forEach(c => courseMap.set(c.id, c));
+          parsed.forEach((c: Course) => {
+            const existing = courseMap.get(c.id);
+            courseMap.set(c.id, existing ? { ...existing, ...c } : c);
+          });
+          return Array.from(courseMap.values());
         }
       } catch (e) {
         return INITIAL_COURSES;
@@ -240,6 +273,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return saved ? JSON.parse(saved) : INITIAL_NOTIFICATIONS;
   });
 
+  const [authoritySettings, setAuthoritySettings] = useState<InstitutionalAuthoritySettings>(() => {
+    const saved = localStorage.getItem('sga_authority_settings_v8');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return { ...INITIAL_AUTHORITY_SETTINGS, ...parsed };
+      } catch (e) { /* fallback */ }
+    }
+    return INITIAL_AUTHORITY_SETTINGS;
+  });
+
   const [activeTerm, setActiveTerm] = useState<string>('2026-1');
   const [latestToast, setLatestToast] = useState<NotificationItem | null>(null);
 
@@ -252,6 +296,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     let unsubGrades: (() => void) | undefined;
     let unsubActivities: (() => void) | undefined;
     let unsubNotifications: (() => void) | undefined;
+    let unsubAuthority: (() => void) | undefined;
 
     const setupFirebaseSync = async () => {
       try {
@@ -261,15 +306,30 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         // Subscribe to real-time updates from Firestore
         unsubUsers = subscribeToUsers(remoteUsers => {
           if (remoteUsers.length > 0) {
-            setUsers(remoteUsers);
-            localStorage.setItem('sga_users_v8', JSON.stringify(remoteUsers));
+            const userMap = new Map<string, User>();
+            INITIAL_USERS.forEach(u => userMap.set(u.id, u));
+            remoteUsers.forEach(u => {
+              const existing = userMap.get(u.id);
+              userMap.set(u.id, existing ? { ...existing, ...u } : u);
+            });
+            const mergedUsers = Array.from(userMap.values());
+            setUsers(mergedUsers);
+            localStorage.setItem('sga_users_v8', JSON.stringify(mergedUsers));
           }
         });
 
         unsubCourses = subscribeToCourses(remoteCourses => {
           if (remoteCourses.length > 0) {
-            setCourses(remoteCourses);
-            localStorage.setItem('sga_courses_v8', JSON.stringify(remoteCourses));
+            // Merge remote courses with INITIAL_COURSES so all 47 official courses (including COM-01 Programación) are always available
+            const courseMap = new Map<string, Course>();
+            INITIAL_COURSES.forEach(c => courseMap.set(c.id, c));
+            remoteCourses.forEach(c => {
+              const existing = courseMap.get(c.id);
+              courseMap.set(c.id, existing ? { ...existing, ...c } : c);
+            });
+            const mergedList = Array.from(courseMap.values());
+            setCourses(mergedList);
+            localStorage.setItem('sga_courses_v8', JSON.stringify(mergedList));
           }
         });
 
@@ -302,6 +362,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           localStorage.setItem('sga_notifications_v8', JSON.stringify(remoteNotifications));
         });
 
+        unsubAuthority = subscribeToAuthoritySettings(remoteAuth => {
+          if (remoteAuth && remoteAuth.directorName) {
+            setAuthoritySettings(prev => ({ ...prev, ...remoteAuth }));
+            localStorage.setItem('sga_authority_settings_v8', JSON.stringify({ ...INITIAL_AUTHORITY_SETTINGS, ...remoteAuth }));
+          }
+        });
+
         setIsCloudSynced(true);
       } catch (err) {
         console.warn('Firebase sync warning:', err);
@@ -318,6 +385,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (unsubGrades) unsubGrades();
       if (unsubActivities) unsubActivities();
       if (unsubNotifications) unsubNotifications();
+      if (unsubAuthority) unsubAuthority();
     };
   }, []);
 
@@ -349,6 +417,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => {
     localStorage.setItem('sga_grades_v8', JSON.stringify(grades));
   }, [grades]);
+
+  useEffect(() => {
+    localStorage.setItem('sga_authority_settings_v8', JSON.stringify(authoritySettings));
+  }, [authoritySettings]);
 
   useEffect(() => {
     localStorage.setItem('sga_notifications_v8', JSON.stringify(notifications));
@@ -632,6 +704,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     sendToast('Permisos de todos los roles restaurados a la configuración institucional.', 'info');
   };
 
+  // Institutional Authority / Signatories Configuration
+  const saveAuthoritySettings = async (newSettings: InstitutionalAuthoritySettings): Promise<{ success: boolean; message: string }> => {
+    if (!newSettings.directorName || newSettings.directorName.trim().length < 3) {
+      return { success: false, message: 'El nombre del Director / Coordinador debe tener al menos 3 caracteres.' };
+    }
+    if (!newSettings.directorTitle || newSettings.directorTitle.trim().length < 2) {
+      return { success: false, message: 'El cargo del Director / Coordinador es requerido.' };
+    }
+
+    const updatedSettings: InstitutionalAuthoritySettings = {
+      ...newSettings,
+      updatedAt: new Date().toISOString()
+    };
+
+    setAuthoritySettings(updatedSettings);
+    localStorage.setItem('sga_authority_settings_v8', JSON.stringify(updatedSettings));
+    await syncAuthoritySettingsToFirestore(updatedSettings);
+    sendToast('Datos de autoridades y firmantes actualizados con éxito.', 'info');
+    return { success: true, message: 'Autoridades y firmantes institucionales guardados correctamente.' };
+  };
+
   // User Management Actions
   const saveUser = (userToSave: User): { success: boolean; message: string; user?: User } => {
     if (!userToSave.name || userToSave.name.trim().length < 3) {
@@ -711,14 +804,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         avatar:
           userToSave.avatar ||
           `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80`,
-        career: userToSave.career || (userToSave.role === 'student' ? 'Desarrollo de Software e IA' : undefined),
+        career: userToSave.career || (userToSave.role === 'student' ? 'Desarrollo de Software e IA' : ''),
         department:
           userToSave.department ||
           (userToSave.role === 'teacher'
             ? 'Área de Tecnología e Informática'
             : userToSave.role === 'subordinado'
             ? 'Oficina de Consultas y Reportes'
-            : 'Coordinación General')
+            : 'Coordinación General'),
+        specialty: userToSave.specialty || '',
+        phone: userToSave.phone || ''
       };
 
       setUsers(prev => [newUser, ...prev]);
@@ -971,21 +1066,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const updateGrade = (updatedGrade: GradeItem) => {
-    const e1 = Number(updatedGrade.evaluacion1 ?? updatedGrade.parcial1) || 0;
-    const e2 = Number(updatedGrade.evaluacion2 ?? updatedGrade.parcial2) || 0;
-    const e3 = Number(updatedGrade.evaluacion3 ?? updatedGrade.practicas) || 0;
-    const e4 = Number(updatedGrade.evaluacion4 ?? updatedGrade.examenFinal) || 0;
+    const e1 = parseGradeInput(updatedGrade.evaluacion1 ?? updatedGrade.parcial1);
+    const e2 = parseGradeInput(updatedGrade.evaluacion2 ?? updatedGrade.parcial2);
+    const e3 = parseGradeInput(updatedGrade.evaluacion3 ?? updatedGrade.practicas);
+    const e4 = parseGradeInput(updatedGrade.evaluacion4 ?? updatedGrade.examenFinal);
 
-    const computedFinal = Number(((e1 + e2 + e3 + e4) / 4).toFixed(1));
-    
-    let computedStatus: GradeItem['status'] = 'En Cursado';
-    if (e1 > 0 || e2 > 0 || e3 > 0 || e4 > 0 || updatedGrade.status === 'Aprobado' || updatedGrade.status === 'Reprobado') {
-      if (computedFinal >= 10) {
-        computedStatus = 'Aprobado';
-      } else {
-        computedStatus = 'Reprobado';
-      }
-    }
+    // Compute final grade using official 0.5 rounding rule
+    const { finalGrade: computedFinal, status: computedStatus } = computeFinalGrade(e1, e2, e3, e4);
 
     const finalItem: GradeItem = {
       ...updatedGrade,
@@ -998,7 +1085,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       practicas: e3,
       examenFinal: e4,
       finalGrade: computedFinal,
-      status: computedStatus,
+      status: updatedGrade.status === 'Recuperación' ? 'Recuperación' : computedStatus,
       updatedAt: new Date().toISOString()
     };
 
@@ -1007,7 +1094,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     sendBroadcastNotification(
       '📝 Calificación Actualizada',
-      `Se han registrado tus notas en "${updatedGrade.courseName}". Tu nota final es ${computedFinal} / 20 pts (${computedStatus}).`,
+      `Se han registrado tus notas en "${updatedGrade.courseName}". Tu nota final es ${computedFinal} / 20 pts (${finalItem.status}).`,
       updatedGrade.studentId,
       'grade',
       updatedGrade.courseCode
@@ -1349,6 +1436,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         toggleRolePermission,
         setRolePermissionValue,
         resetRolePermissionsToDefault,
+        authoritySettings,
+        saveAuthoritySettings,
         saveClassroom,
         deleteClassroom,
         saveUser,

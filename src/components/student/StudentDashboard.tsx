@@ -24,6 +24,12 @@ import { useApp } from '../../context/AppContext';
 import { Course } from '../../types';
 import { generateStudentTranscriptPDF, generateSchedulePDF } from '../../utils/pdfExport';
 import { checkStudentScheduleConflict } from '../../utils/conflictDetector';
+import {
+  getCourseAreaName,
+  getCourseAreaBadgeClasses,
+  courseMatchesAreaFilter
+} from '../../utils/areaHelpers';
+import { formatDecimal, formatGrade } from '../../utils/gradeHelpers';
 
 interface StudentDashboardProps {
   activeTab: string;
@@ -52,7 +58,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ activeTab })
   const totalCredits = studentCourses.reduce((acc, c) => acc + c.credits, 0);
   const validGrades = studentGrades.filter(g => g.finalGrade > 0);
   const gpa = validGrades.length > 0
-    ? (validGrades.reduce((acc, g) => acc + g.finalGrade, 0) / validGrades.length).toFixed(1)
+    ? formatDecimal(validGrades.reduce((acc, g) => acc + g.finalGrade, 0) / validGrades.length, 1, false)
     : 'N/A';
   
   const avgAttendance = studentGrades.length > 0
@@ -65,13 +71,20 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ activeTab })
       course.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       course.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (course.specialty && course.specialty.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (course.department && course.department.toLowerCase().includes(searchTerm.toLowerCase())) ||
       course.teacherName.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesDept = departmentFilter === 'all' || course.department === departmentFilter;
+    const matchesDept = courseMatchesAreaFilter(course, departmentFilter);
     return matchesSearch && matchesDept;
   });
 
-  const departments = Array.from(new Set(courses.map(c => c.department)));
+  const areaFilterOptions = [
+    { key: 'all', label: `Todas las Áreas (${courses.length})` },
+    { key: 'COMERCIAL', label: `Área Comercial (${courses.filter(c => courseMatchesAreaFilter(c, 'COMERCIAL')).length})` },
+    { key: 'INDUSTRIAL', label: `Área Industrial (${courses.filter(c => courseMatchesAreaFilter(c, 'INDUSTRIAL')).length})` },
+    { key: 'GERENCIAL', label: `Área Gerencial (${courses.filter(c => courseMatchesAreaFilter(c, 'GERENCIAL')).length})` },
+    { key: 'ARTESANAL', label: `Área Artesanal (${courses.filter(c => courseMatchesAreaFilter(c, 'ARTESANAL')).length})` }
+  ];
 
   return (
     <div className="space-y-6 pb-12">
@@ -220,8 +233,8 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ activeTab })
             {studentCourses
               .filter(course => {
                 const grade = studentGrades.find(g => g.courseId === course.id);
-                if (progressFilter === 'passing') return grade && grade.finalGrade >= 70;
-                if (progressFilter === 'risk') return grade && (grade.finalGrade < 70 || grade.asistencia < 75);
+                if (progressFilter === 'passing') return grade && (grade.finalGrade >= 10 || grade.status === 'Aprobado');
+                if (progressFilter === 'risk') return grade && ((grade.finalGrade > 0 && grade.finalGrade < 10) || grade.asistencia < 75);
                 return true;
               })
               .map(course => {
@@ -312,25 +325,25 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ activeTab })
                           <div className="p-1 rounded bg-white dark:bg-slate-800 shadow-2xs">
                             <div className="text-slate-400 font-semibold">Ev 1 (25%)</div>
                             <div className="font-mono font-bold text-slate-900 dark:text-slate-100 text-xs mt-0.5">
-                              {grade.evaluacion1 ?? grade.parcial1 ?? 0}
+                              {formatGrade(grade.evaluacion1 ?? grade.parcial1 ?? 0)}
                             </div>
                           </div>
                           <div className="p-1 rounded bg-white dark:bg-slate-800 shadow-2xs">
                             <div className="text-slate-400 font-semibold">Ev 2 (25%)</div>
                             <div className="font-mono font-bold text-slate-900 dark:text-slate-100 text-xs mt-0.5">
-                              {grade.evaluacion2 ?? grade.parcial2 ?? 0}
+                              {formatGrade(grade.evaluacion2 ?? grade.parcial2 ?? 0)}
                             </div>
                           </div>
                           <div className="p-1 rounded bg-white dark:bg-slate-800 shadow-2xs">
                             <div className="text-slate-400 font-semibold">Ev 3 (25%)</div>
                             <div className="font-mono font-bold text-slate-900 dark:text-slate-100 text-xs mt-0.5">
-                              {grade.evaluacion3 ?? grade.practicas ?? 0}
+                              {formatGrade(grade.evaluacion3 ?? grade.practicas ?? 0)}
                             </div>
                           </div>
                           <div className="p-1 rounded bg-white dark:bg-slate-800 shadow-2xs">
                             <div className="text-slate-400 font-semibold">Ev 4 (25%)</div>
                             <div className="font-mono font-bold text-slate-900 dark:text-slate-100 text-xs mt-0.5">
-                              {grade.evaluacion4 ?? grade.examenFinal ?? 0}
+                              {formatGrade(grade.evaluacion4 ?? grade.examenFinal ?? 0)}
                             </div>
                           </div>
                           <div className={`p-1 rounded border ${
@@ -409,11 +422,10 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ activeTab })
               <select
                 value={departmentFilter}
                 onChange={e => setDepartmentFilter(e.target.value)}
-                className="px-3 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none"
+                className="px-3 py-1.5 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none cursor-pointer"
               >
-                <option value="all">Todas las Áreas</option>
-                {departments.map(d => (
-                  <option key={d} value={d}>{d}</option>
+                {areaFilterOptions.map(opt => (
+                  <option key={opt.key} value={opt.key}>{opt.label}</option>
                 ))}
               </select>
             </div>
@@ -438,9 +450,14 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ activeTab })
                 >
                   <div>
                     <div className="flex items-start justify-between gap-2 mb-2">
-                      <span className="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-slate-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400">
-                        {course.code}
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-slate-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400">
+                          {course.code}
+                        </span>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full ${getCourseAreaBadgeClasses(course)}`}>
+                          {getCourseAreaName(course)}
+                        </span>
+                      </div>
                       <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
                         course.modality === 'Presencial'
                           ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
@@ -459,8 +476,8 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ activeTab })
                     </p>
 
                     {course.specialty && (
-                      <span className="inline-block text-[10px] font-medium text-indigo-600 dark:text-indigo-400 mt-1">
-                        Área: {course.specialty}
+                      <span className="inline-block text-[10px] font-medium text-slate-500 dark:text-slate-400 mt-1">
+                        Especialidad: {course.specialty}
                       </span>
                     )}
 
@@ -607,10 +624,10 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ activeTab })
                           </p>
                         )}
                       </td>
-                      <td className="px-4 py-3.5 text-center font-mono">{grade.parcial1}</td>
-                      <td className="px-4 py-3.5 text-center font-mono">{grade.parcial2}</td>
-                      <td className="px-4 py-3.5 text-center font-mono">{grade.practicas}</td>
-                      <td className="px-4 py-3.5 text-center font-mono">{grade.examenFinal}</td>
+                      <td className="px-4 py-3.5 text-center font-mono">{formatGrade(grade.evaluacion1 ?? grade.parcial1)}</td>
+                      <td className="px-4 py-3.5 text-center font-mono">{formatGrade(grade.evaluacion2 ?? grade.parcial2)}</td>
+                      <td className="px-4 py-3.5 text-center font-mono">{formatGrade(grade.evaluacion3 ?? grade.practicas)}</td>
+                      <td className="px-4 py-3.5 text-center font-mono">{formatGrade(grade.evaluacion4 ?? grade.examenFinal)}</td>
                       <td className="px-4 py-3.5 text-center font-mono">{grade.asistencia}%</td>
                       <td className="px-4 py-3.5 text-center font-mono font-bold text-sm text-slate-900 dark:text-slate-100">
                         {grade.finalGrade}

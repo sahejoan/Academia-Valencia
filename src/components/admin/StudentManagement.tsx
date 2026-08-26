@@ -34,6 +34,7 @@ import { useApp } from '../../context/AppContext';
 import { User, Course, GradeItem, Enrollment } from '../../types';
 import { generateStudyCertificatePDF, generateStudentTranscriptPDF } from '../../utils/pdfExport';
 import { checkStudentScheduleConflict, checkCourseSectionClosed } from '../../utils/conflictDetector';
+import { formatDecimal, formatGrade } from '../../utils/gradeHelpers';
 
 export const OFFICIAL_AREAS = [
   {
@@ -202,7 +203,7 @@ export const StudentManagement: React.FC = () => {
       }
     });
 
-    const averageGpa = gpaCount > 0 ? (sumGpa / gpaCount).toFixed(1) : '16.5';
+    const averageGpa = gpaCount > 0 ? formatDecimal(sumGpa / gpaCount, 1, false) : '16,5';
 
     return {
       total,
@@ -662,7 +663,7 @@ export const StudentManagement: React.FC = () => {
                   const studentEnrs = enrollments.filter(e => e.studentId === student.id);
                   const studentG = grades.filter(g => g.studentId === student.id);
                   const avg = studentG.length > 0
-                    ? (studentG.reduce((a, b) => a + b.finalGrade, 0) / studentG.length).toFixed(1)
+                    ? formatDecimal(studentG.reduce((a, b) => a + b.finalGrade, 0) / studentG.length, 1, false)
                     : 'N/A';
 
                   return (
